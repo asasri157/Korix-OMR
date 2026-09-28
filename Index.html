@@ -1,0 +1,3527 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <base target="_top">
+  <title>KORIX OMR - Web OMR Google Sheets</title>
+  <!-- Tailwind CSS CDN & Config -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Poppins', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
+          },
+          boxShadow: {
+            '2xs': '0 1px 2px 0 rgba(0, 0, 0, 0.03)',
+            'xs': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+          }
+        }
+      }
+    };
+  </script>
+  <!-- Google Fonts Poppins -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- jsQR for QR Code Reading in Continuous Scan -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <!-- QRCode.js for generating QR Codes on A4 Sheets -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <!-- jsPDF & autoTable for Landscape PDF Generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+  <style>
+    body { font-family: 'Poppins', system-ui, -apple-system, sans-serif; }
+    .shadow-2xs { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03); }
+    .shadow-xs { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+    .backdrop-blur-xs { backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+    @media print {
+      body * { visibility: hidden; }
+      #printable-container, #printable-container * { visibility: visible; }
+      #printable-container {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      .page-break {
+        page-break-after: always;
+        break-after: page;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col antialiased">
+
+  <!-- IN-APP TOAST NOTIFICATION CONTAINER -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-3"></div>
+
+  <!-- TOP BAR -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
+      <!-- LEFT SECTION: Hamburger + Logo + Left-Aligned Menus -->
+      <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+        <button id="btn-header-hamburger" onclick="toggleTeacherDrawer()" class="hidden p-2 -ml-1 text-slate-700 hover:text-blue-600 hover:bg-slate-100 rounded-xl transition items-center justify-center shrink-0 border border-slate-200/80 shadow-2xs" title="Menu Navigasi Guru">
+          <svg class="w-5 h-5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+
+        <div class="flex items-center gap-2.5 cursor-pointer shrink-0" onclick="navigateHome()">
+          <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-lg sm:text-xl shadow-md shadow-blue-500/20 shrink-0">
+            K
+          </div>
+          <div class="min-w-0 pr-1 sm:pr-2">
+            <span class="text-base sm:text-lg font-bold tracking-tight text-slate-900 truncate block" id="header-app-name">
+              KORIX <span class="text-blue-600">OMR</span>
+            </span>
+            <p class="text-[10px] sm:text-[11px] text-slate-500 truncate max-w-[120px] sm:max-w-[200px] md:max-w-xs font-medium" id="header-sub-info">
+              Sistem Koreksi Lembar Jawaban Cerdas
+            </p>
+          </div>
+        </div>
+
+        <!-- Desktop Teacher Nav Items (Strictly Left-aligned) -->
+        <nav id="header-teacher-nav" class="hidden lg:flex items-center gap-1 xl:gap-1.5 ml-2 pl-3 border-l border-slate-200 overflow-x-auto py-1">
+          <!-- Rendered dynamically by renderNav() -->
+        </nav>
+      </div>
+
+      <div id="nav-actions" class="flex items-center gap-2 sm:gap-3 shrink-0">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+  </header>
+
+  <!-- SLIDE-OVER DRAWER GURU (HAMBURGER DRAWER) -->
+  <div id="teacher-drawer-wrapper" class="fixed inset-0 z-50 overflow-hidden hidden" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity" onclick="closeTeacherDrawer()"></div>
+    <div class="fixed inset-y-0 left-0 max-w-full flex">
+      <aside class="w-80 max-w-[85vw] bg-white shadow-2xl flex flex-col border-r border-slate-200">
+        <div id="teacher-drawer-content" class="flex flex-col h-full"></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- MAIN CONTAINER -->
+  <main id="app-root" class="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div id="loading-spinner" class="py-20 text-center">
+      <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-blue-600 border-t-transparent"></div>
+      <p class="mt-3 text-slate-600 text-sm">Memuat aplikasi KORIX OMR...</p>
+    </div>
+  </main>
+
+  <!-- PRINT CONTAINER (Hidden in screen, visible in print) -->
+  <div id="printable-container" class="hidden"></div>
+
+  <!-- FOOTER -->
+  <footer class="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500">
+    <p id="footer-text">© 2026 KORIX OMR - Solusi Digitalisasi Penilaian Berbasis Google Apps Script & Google Sheets.</p>
+  </footer>
+
+  <!-- CLIENT SCRIPTS & LOGIC -->
+  <script>
+    // ==========================================
+    // 0. SAFE STORAGE (BULLETPROOF IN GOOGLE APPS SCRIPT IFRAMES)
+    // ==========================================
+    var _memoryStore = {};
+    var SafeStorage = (function() {
+      var _ls = null;
+      try {
+        if (typeof window !== 'undefined' && 'localStorage' in window) {
+          var testKey = '__korix_omr_test__';
+          window.SafeStorage.setItem(testKey, testKey);
+          window.SafeStorage.removeItem(testKey);
+          _ls = window.localStorage;
+        }
+      } catch(e) {
+        _ls = null;
+      }
+
+      return {
+        getItem: function(key) {
+          if (_ls) {
+            try {
+              var val = _ls.getItem(key);
+              if (val !== null) return val;
+            } catch(e) {}
+          }
+          return _memoryStore[key] !== undefined ? _memoryStore[key] : null;
+        },
+        setItem: function(key, val) {
+          var str = String(val);
+          _memoryStore[key] = str;
+          if (_ls) {
+            try {
+              _ls.setItem(key, str);
+            } catch(e) {}
+          }
+        },
+        removeItem: function(key) {
+          delete _memoryStore[key];
+          if (_ls) {
+            try {
+              _ls.removeItem(key);
+            } catch(e) {}
+          }
+        },
+        clear: function() {
+          _memoryStore = {};
+          if (_ls) {
+            try {
+              _ls.clear();
+            } catch(e) {}
+          }
+        }
+      };
+    })();
+
+    // Provide safe global localStorage fallback so unhandled direct calls never crash
+    try {
+      if (typeof window !== 'undefined') {
+        Object.defineProperty(window, 'localStorage', {
+          value: SafeStorage,
+          configurable: true,
+          writable: true
+        });
+      }
+    } catch(e) {}
+
+    // ==========================================
+    // 1. ICONS (ALL LUCIDE SVG ICONS DECLARED FIRST)
+    // ==========================================
+    var ICONS = {
+      subjects: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>',
+      exams: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path stroke-linecap="round" stroke-linejoin="round" d="M14 2v6h6"/><path stroke-linecap="round" stroke-linejoin="round" d="m9 15 2 2 4-4"/></svg>',
+      sheet: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+      scan: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>',
+      results: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="8" r="6"/><path stroke-linecap="round" stroke-linejoin="round" d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>',
+      profile: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m4 6 8-4 8 4"/><path stroke-linecap="round" stroke-linejoin="round" d="m18 10 4 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8l4-2"/><path stroke-linecap="round" stroke-linejoin="round" d="M14 22v-4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v4"/><path stroke-linecap="round" stroke-linejoin="round" d="M18 5v17"/><path stroke-linecap="round" stroke-linejoin="round" d="M6 5v17"/><circle cx="12" cy="9" r="2"/></svg>',
+      password: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>',
+      menu: '<svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>',
+      close: '<svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 6 6 18M6 6l12 12"/></svg>',
+      logout: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
+      eye: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
+      eyeOff: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path stroke-linecap="round" stroke-linejoin="round" d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path stroke-linecap="round" stroke-linejoin="round" d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>',
+      check: '<svg class="w-5 h-5 shrink-0 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+      alert: '<svg class="w-5 h-5 shrink-0 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+      sparkles: '<svg class="w-3.5 h-3.5 shrink-0 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M20 3v4"/><path stroke-linecap="round" stroke-linejoin="round" d="M22 5h-4"/><path stroke-linecap="round" stroke-linejoin="round" d="M4 17v2"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 18H3"/></svg>',
+      arrowRight: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14"/><path stroke-linecap="round" stroke-linejoin="round" d="m12 5 7 7-7 7"/></svg>',
+      messageSquare: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+      helpCircle: '<svg class="w-4 h-4 shrink-0 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 17h.01"/></svg>',
+      checkCircle2: '<svg class="w-4 h-4 shrink-0 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path stroke-linecap="round" stroke-linejoin="round" d="m9 12 2 2 4-4"/></svg>',
+      camera: '<svg class="w-6 h-6 shrink-0 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>',
+      qrCode: '<svg class="w-6 h-6 shrink-0 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>',
+      fileSpreadsheet: '<svg class="w-6 h-6 shrink-0 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M14 2v4a2 2 0 0 0 2 2h4"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 13h2"/><path stroke-linecap="round" stroke-linejoin="round" d="M14 13h2"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 17h2"/><path stroke-linecap="round" stroke-linejoin="round" d="M14 17h2"/></svg>',
+      layers: '<svg class="w-6 h-6 shrink-0 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path stroke-linecap="round" stroke-linejoin="round" d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/><path stroke-linecap="round" stroke-linejoin="round" d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/></svg>',
+      dashboard: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>',
+      users: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path stroke-linecap="round" stroke-linejoin="round" d="M22 21v-2a4 4 0 0 0-3-3.87"/><path stroke-linecap="round" stroke-linejoin="round" d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+      globe: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path stroke-linecap="round" stroke-linejoin="round" d="M2 12h20"/></svg>',
+      shield: '<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>',
+      userCheck: '<svg class="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>',
+      user: '<svg class="w-4 h-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+      lock: '<svg class="w-4 h-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+      plus: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14"/></svg>',
+      trash: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18"/><path stroke-linecap="round" stroke-linejoin="round" d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
+      edit: '<svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path stroke-linecap="round" stroke-linejoin="round" d="m15 5 4 4"/></svg>',
+      search: '<svg class="w-4 h-4 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.3-4.3"/></svg>',
+      printer: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path stroke-linecap="round" stroke-linejoin="round" d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>',
+      download: '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+      alertTriangle: '<svg class="w-5 h-5 shrink-0 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+    };
+
+    // ==========================================
+    // 2. TEACHER NAV MENU CONFIGURATION
+    // ==========================================
+    var TEACHER_MENUS = [
+      { id: 'subjects', label: 'Mata Pelajaran', short: 'Mapel', desc: 'Kelola mata pelajaran & tingkat', countKey: 'subjects' },
+      { id: 'exams', label: 'Ujian & Kunci', short: 'Ujian & Kunci', desc: 'Konfigurasi soal, kunci & bobot OMR', countKey: 'exams' },
+      { id: 'sheet', label: 'Download Lembar A4', short: 'Download Lembar', desc: 'Master template LJK A4 siap cetak' },
+      { id: 'scan', label: 'Scan OMR (Kamera)', short: 'Scan OMR', desc: 'Pindai continuous scan kamera real-time', isSpecial: true },
+      { id: 'results', label: 'Hasil Koreksi & Rekap', short: 'Hasil & Rekap', desc: 'Analisis nilai, tanda salah & unduh PDF Landscape', countKey: 'results' },
+      { id: 'profile', label: 'Profil Guru & Sekolah', short: 'Profil', desc: 'Identitas instansi, logo sekolah & kontak' },
+      { id: 'password', label: 'Ubah Password', short: 'Password', desc: 'Ubah kata sandi lama ke password baru' }
+    ];
+
+    // ==========================================
+    // 3. DATA & STATE MANAGEMENT
+    // ==========================================
+    var AppState = {
+      currentUser: null,
+      landing: {
+        namaApp: 'KORIX OMR',
+        judul: 'KORIX OMR - Solusi Cerdas Koreksi Lembar Jawaban',
+        subjudul: 'Scan Berkelanjutan Cepat, Akurat, Terintegrasi Google Sheets',
+        deskripsi: 'Aplikasi OMR modern untuk guru dan pendidik. Memeriksa lembar jawaban A4 dengan continuous camera scan tanpa alat scanner mahal.',
+        logoUrl: 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=160&auto=format&fit=crop&q=80',
+        nomorWhatsApp: '6281234567890',
+        teksTombolWhatsApp: 'Konsultasi & Langganan via WhatsApp',
+        footerText: '© 2026 KORIX OMR - Google Apps Script & Google Sheets Edition.'
+      },
+      currentAdminTab: 'teachers', // 'teachers', 'landing', 'allresults'
+      currentGuruTab: 'subjects', // 'subjects', 'exams', 'sheet', 'scan', 'results', 'profile', 'password' (matching AI Studio)
+      users: [],
+      subjects: [],
+      exams: [],
+      results: [],
+      isScanning: false,
+      videoStream: null,
+      scanInterval: null,
+      lastScannedCode: null
+    };
+
+    // Floating In-App Toast Notification
+    function showToast(message, type) {
+      var container = document.getElementById('toast-container');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-3';
+        document.body.appendChild(container);
+      }
+
+      var bg = 'bg-slate-900 text-white';
+      var iconHtml = ICONS.sparkles || '';
+      if (type === 'success') {
+        bg = 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20';
+        iconHtml = ICONS.checkCircle2 || ICONS.check;
+      } else if (type === 'error') {
+        bg = 'bg-rose-600 text-white shadow-lg shadow-rose-600/20';
+        iconHtml = ICONS.alert;
+      } else if (type === 'warning') {
+        bg = 'bg-amber-600 text-white shadow-lg shadow-amber-600/20';
+        iconHtml = ICONS.alertTriangle || ICONS.alert;
+      } else if (type === 'info') {
+        bg = 'bg-blue-600 text-white shadow-lg shadow-blue-600/20';
+        iconHtml = ICONS.sparkles;
+      }
+
+      var toast = document.createElement('div');
+      toast.className = 'pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-semibold shadow-lg transition-all duration-300 transform translate-y-0 opacity-100 ' + bg;
+      toast.innerHTML = '<span class="shrink-0">' + iconHtml + '</span><span class="flex-1">' + message + '</span>';
+      container.appendChild(toast);
+
+      setTimeout(function() {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+        setTimeout(function() { toast.remove(); }, 350);
+      }, 3500);
+    }
+
+    // Helper panggil Google Apps Script atau fallback local
+    function callGAS(funcName, args, onSuccess, onError) {
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        var runner = google.script.run
+          .withSuccessHandler(function(res) { if (onSuccess) onSuccess(res); })
+          .withFailureHandler(function(err) {
+            console.error("GAS Error:", err);
+            if (onError) onError(err);
+            else showToast("Kesalahan: " + (err.message || err), "error");
+          });
+        if (args && args.length > 0) runner[funcName].apply(runner, args);
+        else runner[funcName]();
+      } else {
+        // Fallback demo local simulation
+        console.warn("GAS belum terhubung, menggunakan mode simulasi browser.");
+        if (onSuccess) onSuccess(null);
+      }
+    }
+
+    // Inisialisasi data demo awal jika browser belum ada storage
+    function initLocalStorage() {
+      if (!SafeStorage.getItem('korix_users')) {
+        var demoUsers = [
+          {
+            id: 'usr-01',
+            username: 'superadmin',
+            password: 'Korix@2026',
+            nama: 'Super Admin KORIX',
+            email: 'superadmin@korix.sch.id',
+            role: 'superadmin',
+            aktif: true,
+            createdAt: '2026-01-01',
+            paket: 'Unlimited',
+            paketStatus: 'Aktif',
+            tanggalMulai: '2026-01-01',
+            tanggalBerakhir: 'Unlimited',
+            namaSekolah: 'KORIX OMR Central System',
+            alamatSekolah: 'Pusat Layanan KORIX OMR',
+            teleponSekolah: '081234567890',
+            logoSekolahUrl: 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=160&auto=format&fit=crop&q=80'
+          },
+          {
+            id: 'usr-02',
+            username: 'guru.demo',
+            password: 'Guru@12345',
+            nama: 'Budi Santoso, M.Pd.',
+            email: 'budi.santoso@guru.sch.id',
+            role: 'guru',
+            aktif: true,
+            createdAt: '2026-09-01',
+            paket: 'Tahunan',
+            paketStatus: 'Aktif',
+            tanggalMulai: '2026-09-22',
+            tanggalBerakhir: '2027-09-22',
+            namaSekolah: 'SMA NEGERI 1 NUSANTARA',
+            alamatSekolah: 'Jl. Merdeka No. 45, Jakarta Pusat, DKI Jakarta',
+            teleponSekolah: '(021) 555-0192',
+            logoSekolahUrl: 'https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=160&auto=format&fit=crop&q=80'
+          }
+        ];
+        SafeStorage.setItem('korix_users', JSON.stringify(demoUsers));
+      }
+
+      if (!SafeStorage.getItem('korix_subjects')) {
+        var demoSubs = [
+          { id: 'sub-01', kode: 'MAT-X', nama: 'Matematika Wajib', tingkat: 'Kelas X', guruId: 'usr-02' },
+          { id: 'sub-02', kode: 'BIND-X', nama: 'Bahasa Indonesia', tingkat: 'Kelas X', guruId: 'usr-02' },
+          { id: 'sub-03', kode: 'IPAS-X', nama: 'IPAS', tingkat: 'Kelas X', guruId: 'usr-02' },
+          { id: 'sub-04', kode: 'PPKN-X', nama: 'PPKn', tingkat: 'Kelas X', guruId: 'usr-02' }
+        ];
+        SafeStorage.setItem('korix_subjects', JSON.stringify(demoSubs));
+      }
+
+      if (!SafeStorage.getItem('korix_exams')) {
+        var demoExams = [
+          {
+            id: 'exam-01',
+            judul: 'Penilaian Harian 1: Aljabar & Fungsi',
+            subjectId: 'sub-01',
+            guruId: 'usr-02',
+            kelas: 'Kelas X-A',
+            tanggal: '2026-09-22',
+            durasiMenit: 90,
+            jumlahSoal: 15,
+            keterangan: 'Materi Persamaan dan Pertidaksamaan Nilai Mutlak',
+            tipeCounts: { pg: 10, pgk: 2, isian: 2, uraian: 1 },
+            questions: [
+              { id: 'q-1', nomor: 1, tipe: 'pg', bobot: 5, kunci: 'A', opsiCount: 5 },
+              { id: 'q-2', nomor: 2, tipe: 'pg', bobot: 5, kunci: 'C', opsiCount: 5 },
+              { id: 'q-3', nomor: 3, tipe: 'pg', bobot: 5, kunci: 'B', opsiCount: 5 },
+              { id: 'q-4', nomor: 4, tipe: 'pg', bobot: 5, kunci: 'D', opsiCount: 5 },
+              { id: 'q-5', nomor: 5, tipe: 'pg', bobot: 5, kunci: 'A', opsiCount: 5 },
+              { id: 'q-6', nomor: 6, tipe: 'pg', bobot: 5, kunci: 'E', opsiCount: 5 },
+              { id: 'q-7', nomor: 7, tipe: 'pg', bobot: 5, kunci: 'C', opsiCount: 5 },
+              { id: 'q-8', nomor: 8, tipe: 'pg', bobot: 5, kunci: 'B', opsiCount: 5 },
+              { id: 'q-9', nomor: 9, tipe: 'pg', bobot: 5, kunci: 'D', opsiCount: 5 },
+              { id: 'q-10', nomor: 10, tipe: 'pg', bobot: 5, kunci: 'A', opsiCount: 5 },
+              { id: 'q-11', nomor: 11, tipe: 'pgk', bobot: 10, kunci: ['A', 'C'], opsiCount: 5 },
+              { id: 'q-12', nomor: 12, tipe: 'pgk', bobot: 10, kunci: ['B', 'D'], opsiCount: 5 },
+              { id: 'q-13', nomor: 13, tipe: 'isian', bobot: 10, kunci: '12', opsiCount: 0 },
+              { id: 'q-14', nomor: 14, tipe: 'isian', bobot: 10, kunci: '25', opsiCount: 0 },
+              { id: 'q-15', nomor: 15, tipe: 'uraian', bobot: 10, kunci: 'Pembuktian grafik', opsiCount: 0 }
+            ]
+          }
+        ];
+        SafeStorage.setItem('korix_exams', JSON.stringify(demoExams));
+      }
+
+      if (!SafeStorage.getItem('korix_results')) {
+        var demoRes = [
+          {
+            id: 'res-01',
+            examId: 'exam-01',
+            guruId: 'usr-02',
+            sheetCode: 'KORIX-EXAM-01-001',
+            namaSiswa: 'Ahmad Faiz Al-Habsyi',
+            mapelNama: 'Matematika Wajib',
+            examJudul: 'Penilaian Harian 1: Aljabar & Fungsi',
+            benar: 12,
+            salah: 2,
+            kosong: 1,
+            nilai: 88,
+            waktuScan: '2026-09-22 09:30:15'
+          },
+          {
+            id: 'res-02',
+            examId: 'exam-01',
+            guruId: 'usr-02',
+            sheetCode: 'KORIX-EXAM-01-002',
+            namaSiswa: 'Nama belum dikenali',
+            mapelNama: 'Matematika Wajib',
+            examJudul: 'Penilaian Harian 1: Aljabar & Fungsi',
+            benar: 10,
+            salah: 4,
+            kosong: 1,
+            nilai: 74,
+            waktuScan: '2026-09-22 09:31:02'
+          }
+        ];
+        SafeStorage.setItem('korix_results', JSON.stringify(demoRes));
+      }
+    }
+
+    // Evaluasi otomatis masa aktif paket
+    function evaluateUserExpiration(user) {
+      if (!user) return null;
+      if (user.role === 'superadmin' || user.paket === 'Unlimited' || user.tanggalBerakhir === 'Unlimited') {
+        user.paketStatus = 'Aktif';
+        return user;
+      }
+      if (user.tanggalBerakhir) {
+        var today = new Date().toISOString().split('T')[0];
+        if (today > user.tanggalBerakhir) {
+          user.paketStatus = 'Expired';
+        } else {
+          user.paketStatus = 'Aktif';
+        }
+      }
+      return user;
+    }
+
+    // Mengambil dan menyelaraskan daftar user dengan auto-expiry
+    function getStoredUsers() {
+      var list = JSON.parse(SafeStorage.getItem('korix_users') || '[]');
+      var updated = list.map(function(u) { return evaluateUserExpiration(u); });
+      SafeStorage.setItem('korix_users', JSON.stringify(updated));
+      return updated;
+    }
+
+    // ==========================================
+    // LIFECYCLE & ROUTING (BULLETPROOF FOR GOOGLE APPS SCRIPT IFRAMES)
+    // ==========================================
+    function initApp() {
+      initLocalStorage();
+      AppState.users = getStoredUsers();
+      AppState.subjects = JSON.parse(SafeStorage.getItem('korix_subjects') || '[]');
+      AppState.exams = JSON.parse(SafeStorage.getItem('korix_exams') || '[]');
+      AppState.results = JSON.parse(SafeStorage.getItem('korix_results') || '[]');
+
+      var savedAuth = SafeStorage.getItem('korix_auth_user');
+      if (savedAuth) {
+        try {
+          var parsed = JSON.parse(savedAuth);
+          AppState.currentUser = evaluateUserExpiration(parsed);
+          SafeStorage.setItem('korix_auth_user', JSON.stringify(AppState.currentUser));
+        } catch(e) {}
+      }
+
+      // Render immediately with local/cached data
+      renderApp();
+
+      // If running inside Google Apps Script, sync live settings and data in background
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        try {
+          google.script.run
+            .withSuccessHandler(function(cfg) {
+              if (cfg && Object.keys(cfg).length > 0) {
+                AppState.landing = Object.assign({}, AppState.landing, cfg);
+                renderNav();
+                if (!AppState.currentUser) renderLanding();
+              }
+            })
+            .getLandingConfig();
+
+          google.script.run
+            .withSuccessHandler(function(serverUsers) {
+              if (serverUsers && serverUsers.length > 0) {
+                AppState.users = serverUsers;
+                SafeStorage.setItem('korix_users', JSON.stringify(serverUsers));
+                if (AppState.currentUser && AppState.currentUser.role === 'superadmin') {
+                  renderSuperAdmin();
+                }
+              }
+            })
+            .getUsers();
+        } catch(e) {
+          console.warn("GAS background sync:", e);
+        }
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+      initApp();
+    }
+
+    function navigateHome() {
+      if (AppState.currentUser) {
+        renderApp();
+      } else {
+        renderLanding();
+      }
+    }
+
+    function renderApp() {
+      renderNav();
+      if (!AppState.currentUser) {
+        renderLanding();
+      } else if (AppState.currentUser.role === 'superadmin') {
+        renderSuperAdmin();
+      } else {
+        renderGuru();
+      }
+    }
+
+    // Close drawers or modals on Escape key
+    window.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeTeacherDrawer();
+        closeLoginModal();
+      }
+    });
+
+    // ==========================================
+    // HEADER & NAVIGATION (MATCHING GOOGLE AI STUDIO)
+    // ==========================================
+    var TEACHER_MENUS = [
+      { id: 'subjects', label: 'Mata Pelajaran', short: 'Mapel', desc: 'Kelola mata pelajaran & tingkat', countKey: 'subjects' },
+      { id: 'exams', label: 'Ujian & Kunci', short: 'Ujian & Kunci', desc: 'Konfigurasi soal, kunci & bobot OMR', countKey: 'exams' },
+      { id: 'sheet', label: 'Download Lembar A4', short: 'Download Lembar', desc: 'Master template LJK A4 siap cetak' },
+      { id: 'scan', label: 'Scan OMR (Kamera)', short: 'Scan OMR', desc: 'Pindai continuous scan kamera real-time', isSpecial: true },
+      { id: 'results', label: 'Hasil Koreksi & Rekap', short: 'Hasil & Rekap', desc: 'Analisis nilai, tanda salah & unduh PDF Landscape', countKey: 'results' },
+      { id: 'profile', label: 'Profil Guru & Sekolah', short: 'Profil', desc: 'Identitas instansi, logo sekolah & kontak' },
+      { id: 'password', label: 'Ubah Password', short: 'Password', desc: 'Ubah kata sandi lama ke password baru' }
+    ];
+
+    function toggleTeacherDrawer() {
+      var w = document.getElementById('teacher-drawer-wrapper');
+      if (w) {
+        if (w.classList.contains('hidden')) {
+          renderTeacherDrawer();
+          w.classList.remove('hidden');
+        } else {
+          w.classList.add('hidden');
+        }
+      }
+    }
+
+    function closeTeacherDrawer() {
+      var w = document.getElementById('teacher-drawer-wrapper');
+      if (w) w.classList.add('hidden');
+    }
+
+    function renderTeacherDrawer() {
+      var user = AppState.currentUser;
+      if (!user) return;
+      var c = document.getElementById('teacher-drawer-content');
+      if (!c) return;
+
+      var itemsHtml = TEACHER_MENUS.map(function(m) {
+        var isActive = AppState.currentGuruTab === m.id;
+        var count = null;
+        if (m.countKey === 'subjects') count = AppState.subjects.filter(function(s){return s.guruId===user.id;}).length;
+        if (m.countKey === 'exams') count = AppState.exams.filter(function(e){return e.guruId===user.id;}).length;
+        if (m.countKey === 'results') count = AppState.results.filter(function(r){return r.guruId===user.id;}).length;
+
+        return `
+          <button onclick="setGuruTab('${m.id}'); closeTeacherDrawer();" class="w-full text-left flex items-start gap-3 p-2.5 rounded-xl transition ${isActive ? 'bg-blue-50 text-blue-900 border border-blue-200 shadow-2xs font-semibold' : 'hover:bg-slate-50 text-slate-700'}">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isActive ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}">
+              ${ICONS[m.id]}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex justify-between items-center">
+                <span class="text-xs ${isActive ? 'font-bold text-blue-700' : 'font-semibold text-slate-800'}">${m.label}</span>
+                ${count !== null ? `<span class="text-[10px] px-1.5 py-0.2 rounded-full font-bold ${isActive ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}">${count}</span>` : ''}
+                ${m.isSpecial ? `<span class="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-emerald-100 text-emerald-700">Live</span>` : ''}
+              </div>
+              <p class="text-[10px] text-slate-500 truncate mt-0.5">${m.desc}</p>
+            </div>
+          </button>
+        `;
+      }).join('');
+
+      c.innerHTML = `
+        <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-sm">K</div>
+            <div>
+              <div class="font-bold text-xs text-slate-900">KORIX OMR</div>
+              <div class="text-[10px] text-blue-600 font-semibold">Navigasi Akun Guru</div>
+            </div>
+          </div>
+          <button onclick="closeTeacherDrawer()" class="p-1 text-slate-400 hover:text-slate-600 rounded transition" title="Tutup Menu">
+            ${ICONS.close}
+          </button>
+        </div>
+
+        <div class="p-3 mx-3 mt-3 bg-blue-50/60 rounded-xl border border-blue-100">
+          <div class="text-xs font-bold text-slate-900">${user.nama}</div>
+          <div class="text-[11px] text-slate-500">${user.namaSekolah || 'Guru Pengajar'}</div>
+          <div class="mt-1 flex items-center gap-1.5 text-[10px]">
+            <span class="px-1.5 py-0.2 bg-blue-100 text-blue-700 font-semibold rounded">${user.paket}</span>
+            <span class="px-1.5 py-0.2 ${user.paketStatus === 'Aktif' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'} font-semibold rounded">${user.paketStatus}</span>
+          </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-3 py-3 space-y-1">
+          <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 pb-1">Daftar Menu Guru</div>
+          ${itemsHtml}
+        </div>
+
+        <div class="p-3 border-t border-slate-100 bg-slate-50 space-y-2">
+          <button onclick="setGuruTab('scan'); closeTeacherDrawer();" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-2">
+            ${ICONS.scan}
+            <span>Mulai Scan Kamera OMR</span>
+          </button>
+          <button onclick="logout()" class="w-full py-1.5 text-xs text-rose-600 hover:bg-rose-50 font-semibold rounded-xl border border-rose-200 transition flex items-center justify-center gap-1.5">
+            ${ICONS.logout}
+            <span>Keluar dari Akun Guru</span>
+          </button>
+        </div>
+      `;
+    }
+
+    function renderNav() {
+      var nav = document.getElementById('nav-actions');
+      var subInfo = document.getElementById('header-sub-info');
+      var hamburgerBtn = document.getElementById('btn-header-hamburger');
+      var teacherNav = document.getElementById('header-teacher-nav');
+      
+      if (!AppState.currentUser) {
+        if (hamburgerBtn) hamburgerBtn.classList.add('hidden');
+        if (teacherNav) { teacherNav.classList.add('hidden'); teacherNav.innerHTML = ''; }
+        subInfo.innerText = 'Sistem Koreksi Lembar Jawaban Cerdas';
+        nav.innerHTML = `
+          <button onclick="openLoginModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-sm transition">
+            Masuk Sistem
+          </button>
+        `;
+      } else {
+        var isSuper = AppState.currentUser.role === 'superadmin';
+        var isGuru = AppState.currentUser.role === 'guru';
+
+        if (isGuru && hamburgerBtn) {
+          hamburgerBtn.classList.remove('hidden');
+        } else if (hamburgerBtn) {
+          hamburgerBtn.classList.add('hidden');
+        }
+
+        // Render desktop left-aligned teacher menus (Strictly Left-aligned matching Google AI Studio)
+        if (isGuru && teacherNav) {
+          teacherNav.classList.remove('hidden');
+          var user = AppState.currentUser;
+          teacherNav.innerHTML = TEACHER_MENUS.map(function(m) {
+            var isActive = AppState.currentGuruTab === m.id;
+            var count = null;
+            if (m.countKey === 'subjects') count = AppState.subjects.filter(function(s){return s.guruId===user.id;}).length;
+            if (m.countKey === 'exams') count = AppState.exams.filter(function(e){return e.guruId===user.id;}).length;
+            if (m.countKey === 'results') count = AppState.results.filter(function(r){return r.guruId===user.id;}).length;
+
+            var iconClass = m.isSpecial 
+              ? (isActive ? 'text-emerald-600 font-bold' : 'text-emerald-600') 
+              : (isActive ? 'text-blue-600' : 'text-slate-400');
+
+            return `
+              <button onclick="setGuruTab('${m.id}')" class="inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 ${isActive ? 'bg-blue-50 text-blue-700 shadow-2xs font-bold ring-1 ring-blue-600/20' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'}" title="${m.desc}">
+                <span class="${iconClass}">${ICONS[m.id]}</span>
+                <span>${m.short}</span>
+                ${count !== null ? `<span class="text-[10px] px-1.5 py-0.2 rounded-full font-bold ml-0.5 ${isActive ? 'bg-blue-600 text-white' : 'bg-slate-200/80 text-slate-600'}">${count}</span>` : ''}
+                ${m.isSpecial ? `<span class="w-1.5 h-1.5 rounded-full ${isActive ? 'bg-white' : 'bg-emerald-500 animate-pulse'}"></span>` : ''}
+              </button>
+            `;
+          }).join('');
+        } else if (teacherNav) {
+          teacherNav.classList.add('hidden');
+          teacherNav.innerHTML = '';
+        }
+
+        subInfo.innerText = isSuper 
+          ? 'Super Admin • Pengelola Aplikasi & Paket' 
+          : (AppState.currentUser.namaSekolah || 'Guru Pengajar');
+
+        var roleBadge = isSuper
+          ? `<span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-[11px] font-bold">Super Admin</span>`
+          : `<span class="px-2 py-0.5 ${AppState.currentUser.paketStatus === 'Aktif' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'} rounded text-[11px] font-bold">Guru (${AppState.currentUser.paket} - ${AppState.currentUser.paketStatus})</span>`;
+
+        nav.innerHTML = `
+          <div class="flex items-center gap-2 sm:gap-3">
+            <div class="text-right hidden sm:block">
+              <div class="text-xs font-bold text-slate-800">${AppState.currentUser.nama}</div>
+              <div class="mt-0.5">${roleBadge}</div>
+            </div>
+            <button onclick="logout()" class="px-3 py-1.5 border border-slate-300 hover:border-rose-300 hover:bg-rose-50 text-slate-700 hover:text-rose-700 text-xs font-semibold rounded-lg transition">
+              Keluar
+            </button>
+          </div>
+        `;
+      }
+    }
+
+    // ==========================================
+    // LANDING PAGE VIEW (100% MATCHING GOOGLE AI STUDIO)
+    // ==========================================
+    function renderLanding() {
+      var root = document.getElementById('app-root');
+      var cleanWa = AppState.landing.nomorWhatsApp.replace(/[^0-9]/g, '');
+
+      root.innerHTML = `
+        <div class="space-y-20 pb-20">
+          <!-- 1. HERO SECTION -->
+          <section class="relative overflow-hidden pt-6 sm:pt-16 pb-8 sm:pb-12 px-2 sm:px-4">
+            <div class="max-w-4xl mx-auto text-center space-y-4 sm:space-y-6">
+              <!-- App Brand Badge -->
+              <div class="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] sm:text-xs font-semibold shadow-xs max-w-full">
+                ${ICONS.sparkles}
+                <span class="truncate">${AppState.landing.namaApp} • Sistem Koreksi Lembar Jawaban Cerdas</span>
+              </div>
+
+              <!-- Headline -->
+              <h1 class="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight sm:leading-tight">
+                ${AppState.landing.judul}
+              </h1>
+
+              <!-- Subtitle -->
+              <p class="text-sm sm:text-lg lg:text-xl font-medium text-slate-600 max-w-2xl mx-auto leading-relaxed px-2">
+                ${AppState.landing.subjudul}
+              </p>
+
+              <!-- Description -->
+              <p class="text-xs sm:text-sm text-slate-500 max-w-2xl mx-auto leading-relaxed px-2">
+                ${AppState.landing.deskripsi}
+              </p>
+
+              <!-- Call to Actions -->
+              <div class="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-md mx-auto sm:max-w-none">
+                <button
+                  id="btn-hero-login"
+                  onclick="openLoginModal()"
+                  class="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-600/25 transition min-h-[44px]"
+                >
+                  <span>Masuk Aplikasi</span>
+                  ${ICONS.arrowRight}
+                </button>
+                <a
+                  id="btn-hero-wa"
+                  href="https://wa.me/${cleanWa}?text=Halo%20Super%20Admin%20KORIX%20OMR,%20saya%20tertarik%20dengan%20aplikasi%20KORIX%20OMR"
+                  target="_blank"
+                  rel="noreferrer"
+                  class="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-emerald-600/20 transition min-h-[44px]"
+                >
+                  ${ICONS.messageSquare}
+                  <span>${AppState.landing.teksTombolWhatsApp}</span>
+                </a>
+              </div>
+            </div>
+          </section>
+
+          <!-- 2. FITUR UTAMA -->
+          <section class="max-w-6xl mx-auto px-4">
+            <div class="text-center mb-8 sm:mb-10 space-y-2">
+              <span class="text-xs font-bold text-blue-600 uppercase tracking-wider">Keunggulan Utama</span>
+              <h2 class="text-xl sm:text-3xl font-bold text-slate-900">Teknologi OMR Generasi Baru</h2>
+              <p class="text-xs sm:text-sm text-slate-500">Koreksi lembar jawaban tanpa scanner mahal, cukup kamera laptop atau smartphone.</p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition">
+                <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center font-bold mb-4">
+                  ${ICONS.camera}
+                </div>
+                <h3 class="font-bold text-slate-900 text-base mb-2">Continuous Camera Scan</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">Kamera aktif terus-menerus. Cukup layangkan lembar satu per satu tanpa klik berulang.</p>
+              </div>
+
+              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition">
+                <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center font-bold mb-4">
+                  ${ICONS.qrCode}
+                </div>
+                <h3 class="font-bold text-slate-900 text-base mb-2">QR Code & Corner Presisi</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">4 sudut hitam penanda presisi dan QR code unik per lembar mencegah kesalahan identitas.</p>
+              </div>
+
+              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition">
+                <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center font-bold mb-4">
+                  ${ICONS.fileSpreadsheet}
+                </div>
+                <h3 class="font-bold text-slate-900 text-base mb-2">Terkoneksi Google Sheets</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">Seluruh nilai, kunci jawaban, dan histori nilai tersimpan otomatis di Google Sheets.</p>
+              </div>
+
+              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition">
+                <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center font-bold mb-4">
+                  ${ICONS.layers}
+                </div>
+                <h3 class="font-bold text-slate-900 text-base mb-2">4 Tipe Penilaian Lengkap</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">Mendukung Pilihan Ganda, PG Kompleks otomatis, serta Isian Singkat & Uraian.</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- 3. CARA KERJA (3 LANGKAH) -->
+          <section class="max-w-5xl mx-auto px-4">
+            <div class="text-center mb-10 space-y-2">
+              <span class="text-xs font-bold text-emerald-600 uppercase tracking-wider">Alur Sederhana</span>
+              <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">Cara Kerja KORIX OMR</h2>
+              <p class="text-xs sm:text-sm text-slate-500">Tiga langkah cepat dari persiapan ujian hingga penilaian tuntas.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div class="bg-white p-6 rounded-2xl border border-slate-200 relative shadow-xs">
+                <div class="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm mb-4">
+                  1
+                </div>
+                <h3 class="font-bold text-slate-900 text-base mb-2">Buat Mapel & Ujian</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">Guru membuat mata pelajaran, mengatur soal, dan menentukan kunci jawaban PG serta PGK.</p>
+              </div>
+
+              <div class="bg-white p-6 rounded-2xl border border-slate-200 relative shadow-xs">
+                <div class="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm mb-4">
+                  2
+                </div>
+                <h3 class="font-bold text-slate-900 text-base mb-2">Cetak Lembar Jawaban A4</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">Tentukan jumlah lembar siswa, cetak sekaligus dengan QR Code unik dan tanda deteksi sudut.</p>
+              </div>
+
+              <div class="bg-white p-6 rounded-2xl border border-slate-200 relative shadow-xs">
+                <div class="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm mb-4">
+                  3
+                </div>
+                <h3 class="font-bold text-slate-900 text-base mb-2">Arahkan Lembar ke Kamera</h3>
+                <p class="text-xs text-slate-600 leading-relaxed">Buka scanner OMR, arahkan lembar satu per satu. Sistem langsung menilai dan menyimpan ke Google Sheets!</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- 4. PAKET DAN HARGA -->
+          <section class="max-w-5xl mx-auto px-4">
+            <div class="text-center mb-10 space-y-2">
+              <span class="text-xs font-bold text-blue-600 uppercase tracking-wider">Pilihan Langganan</span>
+              <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">Paket Hemat untuk Guru & Sekolah</h2>
+              <p class="text-xs sm:text-sm text-slate-500">
+                Masa aktif otomatis diperbarui. Pembayaran praktis via WhatsApp Super Admin.
+              </p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <!-- Paket Bulanan -->
+              <div class="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col justify-between shadow-xs hover:border-slate-300 transition">
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-lg font-bold text-slate-900">Paket Bulanan</h3>
+                    <span class="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded">30 Hari</span>
+                  </div>
+                  <p class="text-xs text-slate-500 mb-4">Pilihan fleksibel untuk evaluasi berkala dan ujian bulanan.</p>
+                  <div class="mb-6">
+                    <span class="text-3xl font-extrabold text-slate-900">Rp 49.000</span>
+                    <span class="text-xs text-slate-500 ml-1">/ per bulan (30 hari)</span>
+                  </div>
+                  <div class="space-y-2.5 mb-6 text-xs text-slate-600 border-t border-slate-100 pt-4">
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Masa aktif 30 hari otomatis</span></div>
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Semua jenis soal (PG, PGK, Isian, Uraian)</span></div>
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Continuous scan kamera smartphone & laptop</span></div>
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Cetak lembar A4 & batch generator</span></div>
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Ekspor rekap nilai ke CSV & Google Sheets</span></div>
+                  </div>
+                </div>
+                <a
+                  href="https://wa.me/${cleanWa}?text=Halo%20Super%20Admin%20KORIX%20OMR,%20saya%20ingin%20berlangganan%20Paket%20Bulanan"
+                  target="_blank"
+                  rel="noreferrer"
+                  class="w-full py-3 px-4 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-2 transition bg-slate-100 hover:bg-slate-200 text-slate-800"
+                >
+                  ${ICONS.messageSquare}
+                  <span>Beli via WhatsApp</span>
+                </a>
+              </div>
+
+              <!-- Paket Tahunan (Populer) -->
+              <div class="bg-white rounded-2xl border p-6 flex flex-col justify-between transition relative border-blue-500 shadow-xl ring-2 ring-blue-500/20">
+                <div class="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 bg-blue-600 text-white text-[11px] font-bold rounded-full uppercase tracking-wider shadow-sm">
+                  Paling Populer
+                </div>
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-lg font-bold text-slate-900">Paket Tahunan</h3>
+                    <span class="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded">365 Hari</span>
+                  </div>
+                  <p class="text-xs text-slate-500 mb-4">Paling hemat untuk 2 semester tahun ajaran penuh.</p>
+                  <div class="mb-6">
+                    <span class="text-3xl font-extrabold text-slate-900">Rp 299.000</span>
+                    <span class="text-xs text-slate-500 ml-1">/ per tahun (365 hari)</span>
+                  </div>
+                  <div class="space-y-2.5 mb-6 text-xs text-slate-600 border-t border-slate-100 pt-4">
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Masa aktif 365 hari otomatis</span></div>
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Semua jenis soal (PG, PGK, Isian, Uraian)</span></div>
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Continuous scan tanpa batas lembar</span></div>
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Custom profil sekolah & logo per guru</span></div>
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Ekspor rekap nilai ke CSV & Google Sheets</span></div>
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Dukungan prioritas WhatsApp Super Admin</span></div>
+                  </div>
+                </div>
+                <a
+                  href="https://wa.me/${cleanWa}?text=Halo%20Super%20Admin%20KORIX%20OMR,%20saya%20ingin%20berlangganan%20Paket%20Tahunan"
+                  target="_blank"
+                  rel="noreferrer"
+                  class="w-full py-3 px-4 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-2 transition bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                >
+                  ${ICONS.messageSquare}
+                  <span>Beli via WhatsApp</span>
+                </a>
+              </div>
+
+              <!-- Paket Unlimited -->
+              <div class="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col justify-between shadow-xs hover:border-slate-300 transition">
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-lg font-bold text-slate-900">Paket Unlimited</h3>
+                    <span class="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded">Unlimited</span>
+                  </div>
+                  <p class="text-xs text-slate-500 mb-4">Akses seumur hidup tanpa masa kedaluwarsa.</p>
+                  <div class="mb-6">
+                    <span class="text-3xl font-extrabold text-slate-900">Rp 699.000</span>
+                    <span class="text-xs text-slate-500 ml-1">/ sekali bayar selamanya</span>
+                  </div>
+                  <div class="space-y-2.5 mb-6 text-xs text-slate-600 border-t border-slate-100 pt-4">
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Masa aktif selamanya (tanpa expired)</span></div>
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Akses tak terbatas seluruh fitur</span></div>
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Continuous scan tanpa batas lembar</span></div>
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Dapat digunakan untuk semua tahun ajaran</span></div>
+                    <div class="flex items-center gap-2">${ICONS.checkCircle2}<span>Free update template dan fitur baru</span></div>
+                  </div>
+                </div>
+                <a
+                  href="https://wa.me/${cleanWa}?text=Halo%20Super%20Admin%20KORIX%20OMR,%20saya%20ingin%20berlangganan%20Paket%20Unlimited"
+                  target="_blank"
+                  rel="noreferrer"
+                  class="w-full py-3 px-4 rounded-xl text-xs font-bold text-center flex items-center justify-center gap-2 transition bg-slate-100 hover:bg-slate-200 text-slate-800"
+                >
+                  ${ICONS.messageSquare}
+                  <span>Beli via WhatsApp</span>
+                </a>
+              </div>
+            </div>
+          </section>
+
+          <!-- 5. FAQ SEDERHANA -->
+          <section class="max-w-4xl mx-auto px-4">
+            <div class="text-center mb-10 space-y-2">
+              <span class="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center justify-center gap-1">
+                ${ICONS.helpCircle}
+                Tanya Jawab
+              </span>
+              <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">Pertanyaan yang Sering Diajukan</h2>
+            </div>
+
+            <div class="space-y-4">
+              <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <h4 class="font-bold text-slate-900 text-sm mb-1.5">Bagaimana cara kerja Continuous Scan pada kamera?</h4>
+                <p class="text-xs text-slate-600 leading-relaxed">Setelah guru membuka scanner, kamera akan menyala terus. Guru cukup mengarahkan lembar jawaban siswa di depan kamera bergantian. Sistem langsung mengenali lembar dan membunyikan nada konfirmasi saat nilai tersimpan.</p>
+              </div>
+
+              <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <h4 class="font-bold text-slate-900 text-sm mb-1.5">Apakah membutuhkan kertas LJK khusus tebal?</h4>
+                <p class="text-xs text-slate-600 leading-relaxed">Tidak perlu. KORIX OMR dirancang menggunakan kertas HVS A4 standar 70-80 gsm yang bisa difotokopi atau dicetak di printer sekolah biasa.</p>
+              </div>
+
+              <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <h4 class="font-bold text-slate-900 text-sm mb-1.5">Bagaimana jika masa aktif akun guru berakhir?</h4>
+                <p class="text-xs text-slate-600 leading-relaxed">Sistem otomatis mengunci fitur utama dan menampilkan tombol WhatsApp untuk perpanjangan ke Super Admin. Setelah diperpanjang, akun otomatis aktif kembali.</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- 6. WHATSAPP CTA BANNER -->
+          <section class="max-w-4xl mx-auto px-4">
+            <div class="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-3xl p-8 sm:p-10 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
+              <div class="space-y-2 text-center md:text-left">
+                <h3 class="text-2xl font-extrabold tracking-tight">Konsultasi & Aktivasi Instan</h3>
+                <p class="text-emerald-100 text-xs sm:text-sm max-w-md">
+                  Hubungi Super Admin KORIX OMR langsung untuk demonstrasi, bantuan teknis, dan perpanjangan paket.
+                </p>
+              </div>
+
+              <a
+                href="https://wa.me/${cleanWa}?text=Halo%20Super%20Admin%20KORIX%20OMR,%20saya%20ingin%20berkonsultasi"
+                target="_blank"
+                rel="noreferrer"
+                class="px-6 py-3.5 bg-white text-emerald-800 hover:bg-emerald-50 text-sm font-bold rounded-xl shadow-lg transition shrink-0 flex items-center gap-2"
+              >
+                ${ICONS.messageSquare}
+                <span>${AppState.landing.teksTombolWhatsApp}</span>
+              </a>
+            </div>
+          </section>
+
+          <!-- FOOTER -->
+          <footer class="text-center text-xs text-slate-400 pt-8 border-t border-slate-200">
+            <p>${AppState.landing.footerText}</p>
+          </footer>
+        </div>
+      `;
+    }
+
+    // ==========================================
+    // LOGIN MODAL & AUTH (MATCHING LOGINMODAL.TSX)
+    // ==========================================
+    var isPasswordVisible = false;
+
+    function openLoginModal() {
+      closeLoginModal();
+      isPasswordVisible = false;
+      var modal = document.createElement('div');
+      modal.id = 'login-modal-wrapper';
+      modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200';
+      modal.innerHTML = `
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-100 p-6 space-y-5 animate-in zoom-in duration-200">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
+                K
+              </div>
+              <h2 class="text-lg font-bold text-slate-900">Masuk ke KORIX OMR</h2>
+            </div>
+            <button
+              onclick="closeLoginModal()"
+              class="text-slate-400 hover:text-slate-600 rounded-lg p-1 transition"
+              title="Tutup Modal"
+            >
+              ${ICONS.close}
+            </button>
+          </div>
+
+          <div id="login-error-box" class="hidden p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-start gap-2">
+            ${ICONS.alert}
+            <span id="login-error-text">Username atau password tidak sesuai, atau akun dinonaktifkan.</span>
+          </div>
+
+          <form onsubmit="handleLogin(event)" class="space-y-3.5">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Username</label>
+              <div class="relative">
+                <div class="absolute left-3 top-2.5">
+                  ${ICONS.user}
+                </div>
+                <input
+                  type="text"
+                  id="input-username"
+                  required
+                  placeholder="Masukkan username Anda"
+                  class="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Password</label>
+              <div class="relative">
+                <div class="absolute left-3 top-2.5">
+                  ${ICONS.lock}
+                </div>
+                <input
+                  type="password"
+                  id="input-password"
+                  required
+                  placeholder="Masukkan kata sandi"
+                  class="w-full pl-9 pr-10 py-2 border border-slate-300 rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                />
+                <button
+                  type="button"
+                  id="btn-login-toggle-eye"
+                  onclick="toggleLoginPasswordVisibility()"
+                  class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 focus:outline-none transition rounded-lg hover:bg-slate-100"
+                  aria-label="Lihat password"
+                  title="Lihat password"
+                >
+                  ${ICONS.eye}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-md shadow-blue-600/20 transition"
+            >
+              Masuk ke Aplikasi
+            </button>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    function toggleLoginPasswordVisibility() {
+      var passInput = document.getElementById('input-password');
+      var btn = document.getElementById('btn-login-toggle-eye');
+      if (!passInput || !btn) return;
+      isPasswordVisible = !isPasswordVisible;
+      passInput.type = isPasswordVisible ? 'text' : 'password';
+      btn.innerHTML = isPasswordVisible ? ICONS.eyeOff : ICONS.eye;
+      showToast(isPasswordVisible ? 'Kata Sandi Ditampilkan' : 'Kata Sandi Disembunyikan', 'info');
+    }
+
+    function closeLoginModal() {
+      var m = document.getElementById('login-modal-wrapper');
+      if (m) m.remove();
+    }
+
+
+    function handleLogin(e) {
+      e.preventDefault();
+      var u = document.getElementById('input-username').value.trim();
+      var p = document.getElementById('input-password').value.trim();
+      var errBox = document.getElementById('login-error-box');
+      var errText = document.getElementById('login-error-text');
+
+      function showError(msg) {
+        if (errBox) {
+          if (errText) errText.innerText = msg;
+          errBox.classList.remove('hidden');
+        }
+        showToast('Login Gagal: ' + msg, 'error');
+      }
+
+      function onLoginSuccess(user) {
+        user = evaluateUserExpiration(user);
+        AppState.currentUser = user;
+        SafeStorage.setItem('korix_auth_user', JSON.stringify(user));
+        closeLoginModal();
+        renderApp();
+        showToast('Login Berhasil! Selamat datang, ' + user.nama, 'success');
+      }
+
+      // 1. Coba lewat Google Apps Script jika aktif di Web App
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(function(res) {
+            if (res && res.success && res.user) {
+              onLoginSuccess(res.user);
+            } else {
+              // Cek fallback lokal bila GAS mengembalikan gagal
+              var users = getStoredUsers();
+              var found = users.find(function(usr) {
+                return usr.username.toLowerCase() === u.toLowerCase() && usr.password === p && usr.aktif;
+              });
+              if (found) {
+                onLoginSuccess(found);
+              } else {
+                showError(res ? res.message : 'Username atau password tidak sesuai.');
+              }
+            }
+          })
+          .withFailureHandler(function(err) {
+            var users = getStoredUsers();
+            var found = users.find(function(usr) {
+              return usr.username.toLowerCase() === u.toLowerCase() && usr.password === p && usr.aktif;
+            });
+            if (found) {
+              onLoginSuccess(found);
+            } else {
+              showError('Gagal menghubungkan server. Silakan coba lagi.');
+            }
+          })
+          .login(u, p);
+      } else {
+        // 2. Fallback Standalone / LocalStorage
+        var users = getStoredUsers();
+        var found = users.find(function(usr) {
+          return usr.username.toLowerCase() === u.toLowerCase() && usr.password === p && usr.aktif;
+        });
+
+        if (found) {
+          onLoginSuccess(found);
+        } else {
+          showError('Username atau password tidak sesuai, atau akun dinonaktifkan.');
+        }
+      }
+    }
+
+    function logout() {
+      stopCamera();
+      AppState.currentUser = null;
+      SafeStorage.removeItem('korix_auth_user');
+      renderApp();
+      showToast('Anda telah logout dari sistem.', 'info');
+    }
+
+    // ==========================================
+    // SUPER ADMIN VIEW (PENGELOLA APLIKASI & PAKET)
+    // ==========================================
+    function renderSuperAdmin() {
+      var root = document.getElementById('app-root');
+      var users = getStoredUsers();
+      var teachers = users.filter(function(u) { return u.role === 'guru'; });
+      var activeCount = teachers.filter(function(t) { return t.paketStatus === 'Aktif'; }).length;
+      var expiredCount = teachers.filter(function(t) { return t.paketStatus === 'Expired'; }).length;
+
+      if (!AppState.currentAdminTab || AppState.currentAdminTab === 'teachers') {
+        AppState.currentAdminTab = 'overview';
+      }
+
+      root.innerHTML = `
+        <div class="space-y-6">
+          <!-- Super Admin Header Bar -->
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-md text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                  ${ICONS.shield} Super Admin
+                </span>
+                <span class="text-xs text-slate-400 font-semibold">• Master System</span>
+              </div>
+              <h2 class="text-xl font-bold text-slate-900 mt-1">Panel Super Admin KORIX OMR</h2>
+              <p class="text-xs text-slate-500">Pengelola aplikasi, lisensi paket guru, konfigurasi landing page, dan audit rekap nilai.</p>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 bg-slate-100/90 p-1.5 rounded-xl border border-slate-200">
+              <button onclick="setAdminTab('overview')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${AppState.currentAdminTab === 'overview' ? 'bg-white text-blue-700 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'}">
+                ${ICONS.dashboard}
+                <span>Ringkasan</span>
+              </button>
+              <button onclick="setAdminTab('users')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${AppState.currentAdminTab === 'users' ? 'bg-white text-blue-700 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'}">
+                ${ICONS.users}
+                <span>Guru & Sekolah</span>
+                <span class="px-1.5 py-0.2 rounded-full text-[10px] font-bold ${AppState.currentAdminTab === 'users' ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'}">${teachers.length}</span>
+              </button>
+              <button onclick="setAdminTab('landing')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${AppState.currentAdminTab === 'landing' ? 'bg-white text-blue-700 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'}">
+                ${ICONS.globe}
+                <span>Landing Page</span>
+              </button>
+              <button onclick="setAdminTab('exams')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${AppState.currentAdminTab === 'exams' ? 'bg-white text-blue-700 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'}">
+                ${ICONS.fileSpreadsheet}
+                <span>Semua Ujian</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="admin-tab-container"></div>
+        </div>
+      `;
+
+      renderAdminTabContent();
+    }
+
+    function setAdminTab(tab) {
+      AppState.currentAdminTab = tab;
+      showToast('Beralih ke tab ' + tab, 'info');
+      renderSuperAdmin();
+    }
+
+    function renderAdminTabContent() {
+      var container = document.getElementById('admin-tab-container');
+      var users = getStoredUsers();
+      var teachers = users.filter(function(u) { return u.role === 'guru'; });
+      var activeCount = teachers.filter(function(t) { return t.paketStatus === 'Aktif'; }).length;
+      var expiredCount = teachers.filter(function(t) { return t.paketStatus === 'Expired'; }).length;
+
+      // 1. TAB OVERVIEW (RINGKASAN)
+      if (AppState.currentAdminTab === 'overview') {
+        var bulananCount = teachers.filter(function(t){ return t.paket === 'Bulanan'; }).length;
+        var tahunanCount = teachers.filter(function(t){ return t.paket === 'Tahunan'; }).length;
+        var unlimitedCount = teachers.filter(function(t){ return t.paket === 'Unlimited'; }).length;
+
+        container.innerHTML = `
+          <div class="space-y-6">
+            <!-- Stats Overview 4 Cards -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+                <div class="text-xs text-slate-500 font-medium">Total Akun Guru</div>
+                <div class="text-2xl font-bold text-slate-900 mt-1">${teachers.length}</div>
+              </div>
+              <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+                <div class="text-xs text-emerald-600 font-medium">Paket Aktif</div>
+                <div class="text-2xl font-bold text-emerald-700 mt-1">${activeCount}</div>
+              </div>
+              <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+                <div class="text-xs text-rose-600 font-medium">Paket Expired</div>
+                <div class="text-2xl font-bold text-rose-700 mt-1">${expiredCount}</div>
+              </div>
+              <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+                <div class="text-xs text-blue-600 font-medium">Total Scan Siswa</div>
+                <div class="text-2xl font-bold text-blue-700 mt-1">${AppState.results.length}</div>
+              </div>
+            </div>
+
+            <!-- Breakdown Paket -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+              <h3 class="font-bold text-slate-900 text-base">Distribusi Paket Langganan Guru</h3>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                  <div class="text-xs font-semibold text-slate-600">Paket Bulanan (30 Hari)</div>
+                  <div class="text-2xl font-black text-slate-900 mt-1">${bulananCount} Akun</div>
+                  <div class="text-[11px] text-slate-500 mt-1">Rp 49.000 / bulan</div>
+                </div>
+                <div class="p-4 rounded-xl bg-blue-50/70 border border-blue-200">
+                  <div class="text-xs font-semibold text-blue-700">Paket Tahunan (365 Hari)</div>
+                  <div class="text-2xl font-black text-blue-900 mt-1">${tahunanCount} Akun</div>
+                  <div class="text-[11px] text-blue-600 mt-1">Rp 299.000 / tahun</div>
+                </div>
+                <div class="p-4 rounded-xl bg-purple-50/70 border border-purple-200">
+                  <div class="text-xs font-semibold text-purple-700">Paket Unlimited (Selamanya)</div>
+                  <div class="text-2xl font-black text-purple-900 mt-1">${unlimitedCount} Akun</div>
+                  <div class="text-[11px] text-purple-600 mt-1">Rp 699.000 / akun</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Action Links -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <button onclick="setAdminTab('users')" class="p-4 bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl shadow-xs text-left transition flex items-center justify-between">
+                <div>
+                  <div class="font-bold text-slate-900 text-sm">Kelola Akun Guru</div>
+                  <div class="text-xs text-slate-500">Tambah guru & atur masa aktif</div>
+                </div>
+                ${ICONS.arrowRight}
+              </button>
+              <button onclick="setAdminTab('landing')" class="p-4 bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl shadow-xs text-left transition flex items-center justify-between">
+                <div>
+                  <div class="font-bold text-slate-900 text-sm">Pengaturan Landing Page</div>
+                  <div class="text-xs text-slate-500">Kontak WhatsApp & harga paket</div>
+                </div>
+                ${ICONS.arrowRight}
+              </button>
+              <button onclick="setAdminTab('exams')" class="p-4 bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl shadow-xs text-left transition flex items-center justify-between">
+                <div>
+                  <div class="font-bold text-slate-900 text-sm">Audit Ujian & Hasil</div>
+                  <div class="text-xs text-slate-500">Rekapitulasi seluruh nilai siswa</div>
+                </div>
+                ${ICONS.arrowRight}
+              </button>
+            </div>
+          </div>
+        `;
+      } else if (AppState.currentAdminTab === 'users' || AppState.currentAdminTab === 'teachers') {
+
+        var rowsHtml = teachers.map(function(t, idx) {
+          var isExpired = t.paketStatus === 'Expired';
+          return `
+            <tr class="hover:bg-slate-50/80 transition">
+              <td class="p-3 text-slate-400 font-medium">${idx + 1}</td>
+              <td class="p-3 font-semibold text-slate-900">
+                <div>${t.nama}</div>
+                <div class="text-[11px] text-slate-400 font-mono">${t.username} • ${t.email || '-'}</div>
+              </td>
+              <td class="p-3 text-slate-600">
+                <div class="font-medium text-xs">${t.namaSekolah || 'Belum diisi guru'}</div>
+              </td>
+              <td class="p-3">
+                <span class="px-2 py-0.5 rounded text-[11px] font-bold ${
+                  t.paket === 'Unlimited' ? 'bg-purple-100 text-purple-700' :
+                  t.paket === 'Tahunan' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'
+                }">${t.paket}</span>
+              </td>
+              <td class="p-3">
+                <span class="px-2 py-0.5 rounded text-[11px] font-bold ${
+                  isExpired ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                }">${t.paketStatus}</span>
+              </td>
+              <td class="p-3 text-xs text-slate-600">
+                <div>Mulai: ${t.tanggalMulai || '-'}</div>
+                <div class="font-semibold ${isExpired ? 'text-rose-600' : 'text-slate-800'}">Berakhir: ${t.tanggalBerakhir || '-'}</div>
+              </td>
+              <td class="p-3">
+                <div class="flex items-center gap-1.5">
+                  <button onclick="adminExtend('${t.id}', 'Bulanan')" class="px-2 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 text-[11px] font-semibold rounded border border-slate-200">
+                    +30 H
+                  </button>
+                  <button onclick="adminExtend('${t.id}', 'Tahunan')" class="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-semibold rounded border border-blue-200">
+                    +1 Thn
+                  </button>
+                  <button onclick="adminExtend('${t.id}', 'Unlimited')" class="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-semibold rounded border border-purple-200">
+                    Unlimited
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-xs">
+            <div class="flex flex-wrap justify-between items-center gap-3">
+              <div>
+                <h3 class="font-bold text-slate-900 text-base">Daftar Akun Guru & Lisensi Paket</h3>
+                <p class="text-xs text-slate-500">Masa aktif dievaluasi otomatis. Super Admin dapat memperpanjang atau mengubah paket langsung.</p>
+              </div>
+              <button onclick="openAddTeacherModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition">
+                + Tambah Akun Guru
+              </button>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs text-slate-600">
+                <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th class="p-3">No</th>
+                    <th class="p-3">Guru</th>
+                    <th class="p-3">Sekolah</th>
+                    <th class="p-3">Paket</th>
+                    <th class="p-3">Status</th>
+                    <th class="p-3">Masa Aktif</th>
+                    <th class="p-3">Aksi Perpanjang</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  ${rowsHtml}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      } else if (AppState.currentAdminTab === 'landing') {
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 max-w-3xl shadow-xs">
+            <div>
+              <h3 class="font-bold text-slate-900 text-base">Kelola Konten Landing Page Publik</h3>
+              <p class="text-xs text-slate-500">Perbarui informasi kontak WhatsApp, judul, dan branding yang dilihat calon pengguna.</p>
+            </div>
+
+            <form onsubmit="handleSaveLanding(event)" class="space-y-4 text-xs">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block font-semibold text-slate-700 mb-1">Nama Aplikasi</label>
+                  <input type="text" id="adm-namaApp" value="${AppState.landing.namaApp}" class="w-full p-2.5 border border-slate-300 rounded-xl">
+                </div>
+                <div>
+                  <label class="block font-semibold text-slate-700 mb-1">Nomor WhatsApp Pembayaran (Format: 628xxx)</label>
+                  <input type="text" id="adm-wa" value="${AppState.landing.nomorWhatsApp}" class="w-full p-2.5 border border-slate-300 rounded-xl">
+                </div>
+              </div>
+
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Judul Hero Landing Page</label>
+                <input type="text" id="adm-judul" value="${AppState.landing.judul}" class="w-full p-2.5 border border-slate-300 rounded-xl">
+              </div>
+
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Subjudul / Slogan</label>
+                <input type="text" id="adm-subjudul" value="${AppState.landing.subjudul}" class="w-full p-2.5 border border-slate-300 rounded-xl">
+              </div>
+
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Deskripsi Singkat</label>
+                <textarea id="adm-deskripsi" rows="2" class="w-full p-2.5 border border-slate-300 rounded-xl">${AppState.landing.deskripsi}</textarea>
+              </div>
+
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Teks Tombol WhatsApp</label>
+                <input type="text" id="adm-waTeks" value="${AppState.landing.teksTombolWhatsApp}" class="w-full p-2.5 border border-slate-300 rounded-xl">
+              </div>
+
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Teks Footer</label>
+                <input type="text" id="adm-footer" value="${AppState.landing.footerText}" class="w-full p-2.5 border border-slate-300 rounded-xl">
+              </div>
+
+              <div class="pt-2">
+                <button type="submit" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-xs transition">
+                  Simpan Perubahan Landing Page
+                </button>
+              </div>
+            </form>
+          </div>
+        `;
+      } else {
+        // All Results
+        var resHtml = AppState.results.map(function(r, idx) {
+          return `
+            <tr class="hover:bg-slate-50/80">
+              <td class="p-3 text-slate-400 font-medium">${idx + 1}</td>
+              <td class="p-3 font-semibold text-slate-900">${r.namaSiswa}</td>
+              <td class="p-3">${r.mapelNama}</td>
+              <td class="p-3 text-slate-500">${r.examJudul}</td>
+              <td class="p-3 text-emerald-600 font-bold">${r.benar}</td>
+              <td class="p-3 text-rose-600 font-bold">${r.salah}</td>
+              <td class="p-3 text-slate-400 font-medium">${r.kosong}</td>
+              <td class="p-3 font-extrabold text-blue-600 text-sm">${r.nilai}</td>
+              <td class="p-3 text-slate-400 text-[11px] font-mono">${r.waktuScan}</td>
+            </tr>
+          `;
+        }).join('');
+
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-xs">
+            <h3 class="font-bold text-slate-900 text-base">Seluruh Hasil Koreksi Sistem</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs text-slate-600">
+                <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th class="p-3">No</th>
+                    <th class="p-3">Nama Siswa</th>
+                    <th class="p-3">Mata Pelajaran</th>
+                    <th class="p-3">Ujian</th>
+                    <th class="p-3">Benar</th>
+                    <th class="p-3">Salah</th>
+                    <th class="p-3">Kosong</th>
+                    <th class="p-3">Nilai</th>
+                    <th class="p-3">Waktu Scan</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  ${resHtml}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function adminExtend(userId, paketType) {
+      var users = getStoredUsers();
+      var target = users.find(function(u) { return u.id === userId; });
+      if (!target) return;
+
+      var today = new Date();
+      var todayStr = today.toISOString().split('T')[0];
+      target.paket = paketType;
+      target.paketStatus = 'Aktif';
+
+      if (paketType === 'Unlimited') {
+        target.tanggalBerakhir = 'Unlimited';
+      } else {
+        var days = (paketType === 'Bulanan' ? 30 : 365);
+        var base = today;
+        if (target.paketStatus === 'Aktif' && target.tanggalBerakhir && target.tanggalBerakhir !== 'Unlimited') {
+          var prev = new Date(target.tanggalBerakhir);
+          if (prev > today) base = prev;
+        }
+        base.setDate(base.getDate() + days);
+        target.tanggalBerakhir = base.toISOString().split('T')[0];
+      }
+
+      SafeStorage.setItem('korix_users', JSON.stringify(users));
+      renderSuperAdmin();
+    }
+
+    function openAddTeacherModal() {
+      var m = document.createElement('div');
+      m.id = 'add-teacher-modal';
+      m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs';
+      m.innerHTML = `
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-100 p-6 space-y-4">
+          <div class="flex justify-between items-center">
+            <h3 class="font-bold text-slate-900 text-sm">Tambah Akun Guru Baru</h3>
+            <button onclick="document.getElementById('add-teacher-modal').remove()" class="text-slate-400">✕</button>
+          </div>
+          <form onsubmit="handleCreateTeacher(event)" class="space-y-3 text-xs">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Nama Lengkap Guru</label>
+              <input type="text" id="new-tea-nama" required class="w-full p-2 border border-slate-300 rounded-lg" placeholder="Contoh: Dra. Siti Rahma, M.Pd.">
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Username Login</label>
+              <input type="text" id="new-tea-user" required class="w-full p-2 border border-slate-300 rounded-lg" placeholder="siti.rahma">
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Password</label>
+              <input type="text" id="new-tea-pass" value="Guru@12345" required class="w-full p-2 border border-slate-300 rounded-lg font-mono">
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Pilihan Paket Awal</label>
+              <select id="new-tea-paket" class="w-full p-2 border border-slate-300 rounded-lg">
+                <option value="Bulanan">Bulanan (30 Hari)</option>
+                <option value="Tahunan" selected>Tahunan (365 Hari)</option>
+                <option value="Unlimited">Unlimited (Selamanya)</option>
+              </select>
+            </div>
+            <button type="submit" class="w-full py-2 bg-blue-600 text-white font-semibold rounded-lg mt-2">
+              Simpan & Aktifkan Guru
+            </button>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(m);
+    }
+
+    function handleCreateTeacher(e) {
+      e.preventDefault();
+      var nama = document.getElementById('new-tea-nama').value.trim();
+      var user = document.getElementById('new-tea-user').value.trim();
+      var pass = document.getElementById('new-tea-pass').value.trim();
+      var paket = document.getElementById('new-tea-paket').value;
+
+      var today = new Date();
+      var todayStr = today.toISOString().split('T')[0];
+      var end = 'Unlimited';
+      if (paket === 'Bulanan') {
+        today.setDate(today.getDate() + 30);
+        end = today.toISOString().split('T')[0];
+      } else if (paket === 'Tahunan') {
+        today.setDate(today.getDate() + 365);
+        end = today.toISOString().split('T')[0];
+      }
+
+      var users = getStoredUsers();
+      users.push({
+        id: 'usr-' + new Date().getTime(),
+        username: user,
+        password: pass,
+        nama: nama,
+        email: user + '@guru.sch.id',
+        role: 'guru',
+        aktif: true,
+        createdAt: todayStr,
+        paket: paket,
+        paketStatus: 'Aktif',
+        tanggalMulai: todayStr,
+        tanggalBerakhir: end,
+        namaSekolah: 'SMA NEGERI 1 NUSANTARA',
+        alamatSekolah: 'Jl. Merdeka No. 45, Jakarta Pusat',
+        teleponSekolah: '(021) 555-0192',
+        logoSekolahUrl: 'https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=160&auto=format&fit=crop&q=80'
+      });
+
+      SafeStorage.setItem('korix_users', JSON.stringify(users));
+      document.getElementById('add-teacher-modal').remove();
+      renderSuperAdmin();
+    }
+
+    function handleSaveLanding(e) {
+      e.preventDefault();
+      AppState.landing.namaApp = document.getElementById('adm-namaApp').value.trim();
+      AppState.landing.nomorWhatsApp = document.getElementById('adm-wa').value.trim();
+      AppState.landing.judul = document.getElementById('adm-judul').value.trim();
+      AppState.landing.subjudul = document.getElementById('adm-subjudul').value.trim();
+      AppState.landing.deskripsi = document.getElementById('adm-deskripsi').value.trim();
+      AppState.landing.teksTombolWhatsApp = document.getElementById('adm-waTeks').value.trim();
+      AppState.landing.footerText = document.getElementById('adm-footer').value.trim();
+
+      showToast('Pengaturan Landing Page berhasil disimpan!', 'success');
+      callGAS('saveLandingConfig', [AppState.landing]);
+      renderSuperAdmin();
+    }
+
+    // ==========================================
+    // GURU VIEW (DASHBOARD, PROFIL, MAPEL, UJIAN, SCAN, CETAK)
+    // ==========================================
+    function renderGuru() {
+      var root = document.getElementById('app-root');
+      var user = AppState.currentUser;
+      var isExpired = user.paketStatus === 'Expired';
+      var cleanWa = AppState.landing.nomorWhatsApp.replace(/[^0-9]/g, '');
+
+      var myExamsCount = AppState.exams.filter(function(e) { return e.guruId === user.id; }).length;
+      var myResultsCount = AppState.results.filter(function(r) { return r.guruId === user.id; }).length;
+      var mySubsCount = AppState.subjects.filter(function(s) { return s.guruId === user.id; }).length;
+
+      // Check Expiry warning
+      var expiryNotice = '';
+      if (isExpired) {
+        expiryNotice = `
+          <div class="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+            <div class="flex items-center gap-3">
+              <span class="text-rose-600 text-xl font-bold">⚠️</span>
+              <div>
+                <div class="font-bold text-sm">Masa Aktif Paket Anda Telah Habis (Expired)</div>
+                <div class="text-xs text-rose-600 mt-0.5">Fitur membuat ujian, cetak lembar A4, dan continuous scan kamera saat ini terkunci.</div>
+              </div>
+            </div>
+            <a href="https://wa.me/${cleanWa}?text=Halo%20Super%20Admin%20KORIX%20OMR,%20saya%20guru%20${encodeURIComponent(user.nama)}%20ingin%20memperpanjang%20paket" target="_blank" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shrink-0 transition">
+              Perpanjang via WhatsApp Super Admin
+            </a>
+          </div>
+        `;
+      }
+
+      root.innerHTML = `
+        <div class="space-y-6">
+          <!-- 1. DASHBOARD GURU: STATISTIK & STATUS PAKET (Matching Google AI Studio) -->
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 sm:p-6">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-5 border-b border-slate-100">
+              <div class="flex items-start gap-4">
+                ${user.logoSekolahUrl ? `
+                  <img src="${user.logoSekolahUrl}" alt="Logo Sekolah" class="w-14 h-14 rounded-xl object-contain border border-slate-200 p-1 bg-white shrink-0">
+                ` : `
+                  <div class="w-14 h-14 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700 shrink-0 font-bold text-xl">
+                    🏫
+                  </div>
+                `}
+                <div>
+                  <div class="text-xs font-semibold uppercase tracking-wider text-blue-600">
+                    Dashboard Guru / Pelanggan
+                  </div>
+                  <h1 class="text-xl sm:text-2xl font-extrabold text-slate-900 leading-tight">
+                    ${user.nama}
+                  </h1>
+                  <p class="text-xs sm:text-sm text-slate-500 font-medium">
+                    ${user.namaSekolah || 'Sekolah belum diatur'} • ${user.email}
+                  </p>
+                </div>
+              </div>
+
+              <!-- KOTAK STATUS PAKET -->
+              <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 w-full lg:w-auto">
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 text-xs">
+                  <div class="text-slate-500 font-medium">Paket Langganan:</div>
+                  <div class="font-bold text-slate-900 text-sm flex items-center gap-1 mt-0.5">
+                    <span class="text-blue-600 truncate">Paket: ${user.paket}</span>
+                  </div>
+                  <div class="text-slate-500 text-[10px] mt-0.5 truncate">
+                    Berakhir: <span class="font-semibold text-slate-700">${user.tanggalBerakhir === 'Unlimited' ? 'Selamanya' : user.tanggalBerakhir}</span>
+                  </div>
+                </div>
+
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 text-xs">
+                  <div class="text-slate-500 font-medium">Status Akun:</div>
+                  <div class="mt-1">
+                    ${isExpired ? `
+                      <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                        <span class="w-1.5 h-1.5 rounded-full bg-rose-600"></span>
+                        Expired
+                      </span>
+                    ` : `
+                      <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                        Aktif
+                      </span>
+                    `}
+                  </div>
+                </div>
+
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 text-xs text-center">
+                  <div class="text-slate-500 font-medium">Jumlah Ujian:</div>
+                  <div class="text-lg font-black text-slate-900">${myExamsCount}</div>
+                </div>
+
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3 text-xs text-center">
+                  <div class="text-slate-500 font-medium">Hasil Koreksi:</div>
+                  <div class="text-lg font-black text-blue-700">${myResultsCount}</div>
+                </div>
+              </div>
+            </div>
+
+            ${expiryNotice}
+          </div>
+
+          <!-- 2. NAVIGATION TABS GURU - STRICTLY LEFT-ALIGNED WITH HAMBURGER ICON -->
+          <div class="bg-white border border-slate-200/90 rounded-2xl p-2 shadow-2xs">
+            <div class="flex items-center justify-start gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none">
+              <!-- Hamburger Button -->
+              <button onclick="toggleTeacherDrawer()" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:text-blue-700 bg-slate-100/90 hover:bg-blue-50 active:bg-blue-100 rounded-xl border border-slate-200/80 transition shrink-0 shadow-2xs" title="Buka Menu Navigasi Lengkap (Drawer)">
+                ${ICONS.menu}
+                <span class="hidden sm:inline font-bold">Menu Guru</span>
+              </button>
+
+              <div class="h-6 w-px bg-slate-200 shrink-0 mx-0.5"></div>
+
+              <!-- Left-Aligned Tabs -->
+              <div class="flex items-center justify-start gap-1 sm:gap-1.5 min-w-0">
+                <button onclick="setGuruTab('subjects')" class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 text-xs font-semibold rounded-xl transition-all whitespace-nowrap shrink-0 ${AppState.currentGuruTab === 'subjects' ? 'bg-blue-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}">
+                  ${ICONS.subjects}
+                  <span>Mata Pelajaran</span>
+                  <span class="px-1.5 py-0.2 text-[10px] rounded-full font-bold ml-0.5 ${AppState.currentGuruTab === 'subjects' ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-600'}">${mySubsCount}</span>
+                </button>
+
+                <button onclick="setGuruTab('exams')" class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 text-xs font-semibold rounded-xl transition-all whitespace-nowrap shrink-0 ${AppState.currentGuruTab === 'exams' ? 'bg-blue-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}">
+                  ${ICONS.exams}
+                  <span>Ujian & Kunci</span>
+                  <span class="px-1.5 py-0.2 text-[10px] rounded-full font-bold ml-0.5 ${AppState.currentGuruTab === 'exams' ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-600'}">${myExamsCount}</span>
+                </button>
+
+                <button onclick="setGuruTab('sheet')" class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 text-xs font-semibold rounded-xl transition-all whitespace-nowrap shrink-0 ${AppState.currentGuruTab === 'sheet' ? 'bg-blue-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}">
+                  ${ICONS.sheet}
+                  <span>Download Lembar A4</span>
+                </button>
+
+                <button onclick="setGuruTab('scan')" class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 text-xs font-semibold rounded-xl transition-all whitespace-nowrap shrink-0 ${AppState.currentGuruTab === 'scan' ? 'bg-blue-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}">
+                  <span class="${AppState.currentGuruTab === 'scan' ? 'text-white' : 'text-emerald-600'}">${ICONS.scan}</span>
+                  <span>Scan OMR (Kamera)</span>
+                  <span class="w-2 h-2 rounded-full ${AppState.currentGuruTab === 'scan' ? 'bg-white' : 'bg-emerald-500 animate-pulse'}"></span>
+                </button>
+
+                <button onclick="setGuruTab('results')" class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 text-xs font-semibold rounded-xl transition-all whitespace-nowrap shrink-0 ${AppState.currentGuruTab === 'results' ? 'bg-blue-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}">
+                  ${ICONS.results}
+                  <span>Hasil Koreksi & Rekap</span>
+                  <span class="px-1.5 py-0.2 text-[10px] rounded-full font-bold ml-0.5 ${AppState.currentGuruTab === 'results' ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-600'}">${myResultsCount}</span>
+                </button>
+
+                <button onclick="setGuruTab('profile')" class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 text-xs font-semibold rounded-xl transition-all whitespace-nowrap shrink-0 ${AppState.currentGuruTab === 'profile' ? 'bg-blue-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}">
+                  ${ICONS.profile}
+                  <span>Profil Guru & Sekolah</span>
+                </button>
+
+                <button onclick="setGuruTab('password')" class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 text-xs font-semibold rounded-xl transition-all whitespace-nowrap shrink-0 ${AppState.currentGuruTab === 'password' ? 'bg-blue-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}">
+                  ${ICONS.password}
+                  <span>Ubah Password</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div id="guru-tab-container"></div>
+        </div>
+      `;
+
+      renderGuruTabContent();
+    }
+
+    function setGuruTab(tab) {
+      if (AppState.currentGuruTab === 'scan' && tab !== 'scan') {
+        stopCamera();
+      }
+      AppState.currentGuruTab = tab;
+      renderApp();
+    }
+
+    function renderGuruTabContent() {
+      var container = document.getElementById('guru-tab-container');
+      var user = AppState.currentUser;
+      var isExpired = user.paketStatus === 'Expired';
+
+      // 1. Profil & Sekolah
+      if (AppState.currentGuruTab === 'profile') {
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 max-w-2xl shadow-xs">
+            <div>
+              <h3 class="font-bold text-slate-900 text-base">Profil Guru & Identitas Sekolah</h3>
+              <p class="text-xs text-slate-500">Nama sekolah dan logo akan otomatis tampil pada kop Lembar Jawaban A4 yang Anda cetak.</p>
+            </div>
+
+            <form onsubmit="handleSaveProfile(event)" class="space-y-4 text-xs">
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Nama Lengkap Guru</label>
+                <input type="text" id="prof-nama" value="${user.nama}" class="w-full p-2.5 border border-slate-300 rounded-xl font-medium">
+              </div>
+
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Nama Sekolah</label>
+                <input type="text" id="prof-sekolah" value="${user.namaSekolah || ''}" placeholder="SMA NEGERI 1 NUSANTARA" class="w-full p-2.5 border border-slate-300 rounded-xl font-medium">
+              </div>
+
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Alamat Sekolah</label>
+                <input type="text" id="prof-alamat" value="${user.alamatSekolah || ''}" placeholder="Jl. Pendidikan No. 10" class="w-full p-2.5 border border-slate-300 rounded-xl">
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block font-semibold text-slate-700 mb-1">Telepon Sekolah</label>
+                  <input type="text" id="prof-telepon" value="${user.teleponSekolah || ''}" placeholder="(021) 123456" class="w-full p-2.5 border border-slate-300 rounded-xl">
+                </div>
+                <div>
+                  <label class="block font-semibold text-slate-700 mb-1">URL Logo Sekolah</label>
+                  <input type="text" id="prof-logo" value="${user.logoSekolahUrl || ''}" placeholder="https://..." class="w-full p-2.5 border border-slate-300 rounded-xl">
+                </div>
+              </div>
+
+              <!-- Quick Link ke Ubah Password -->
+              <div class="p-4 bg-slate-50 rounded-2xl border border-slate-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 my-2">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 font-bold">
+                    ${ICONS.password}
+                  </div>
+                  <div>
+                    <div class="text-xs font-bold text-slate-900">Keamanan & Kata Sandi Akun</div>
+                    <div class="text-[11px] text-slate-500">Ingin mengubah password lama akun guru Anda ke password baru?</div>
+                  </div>
+                </div>
+                <button type="button" onclick="setGuruTab('password')" class="inline-flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-blue-50 text-blue-700 hover:text-blue-800 text-xs font-semibold rounded-xl border border-slate-200 hover:border-blue-200 transition shadow-2xs shrink-0">
+                  ${ICONS.password}
+                  <span>Buka Menu Ubah Password</span>
+                </button>
+              </div>
+
+              <div class="pt-2">
+                <button type="submit" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition">
+                  Simpan Profil & Sekolah
+                </button>
+              </div>
+            </form>
+          </div>
+        `;
+      } else if (AppState.currentGuruTab === 'subjects') {
+        // 2. Mata Pelajaran
+        var mySubs = AppState.subjects.filter(function(s) { return s.guruId === user.id; });
+        var cardsHtml = mySubs.map(function(s) {
+          return `
+            <div class="p-4 bg-white border border-slate-200 rounded-2xl shadow-xs flex justify-between items-start">
+              <div>
+                <span class="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[10px] font-bold">${s.kode}</span>
+                <h4 class="font-bold text-slate-900 text-sm mt-1">${s.nama}</h4>
+                <p class="text-xs text-slate-500">${s.tingkat}</p>
+              </div>
+              <button onclick="handleDeleteSubject('${s.id}')" class="text-slate-400 hover:text-rose-600 p-1 text-xs">Hapus</button>
+            </div>
+          `;
+        }).join('');
+
+        container.innerHTML = `
+          <div class="space-y-6">
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap justify-between items-center gap-3">
+              <div>
+                <h3 class="font-bold text-slate-900 text-base">Mata Pelajaran Pengampu</h3>
+                <p class="text-xs text-slate-500">Mata pelajaran yang Anda ampu dan dijadikan dasar pembuatan ujian.</p>
+              </div>
+              <button onclick="openAddSubjectModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl">
+                + Tambah Mapel
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              ${cardsHtml || '<div class="col-span-full p-8 text-center text-slate-400 text-xs bg-white rounded-2xl border border-dashed border-slate-200">Belum ada mata pelajaran. Klik tombol Tambah Mapel di atas.</div>'}
+            </div>
+          </div>
+        `;
+      } else if (AppState.currentGuruTab === 'exams') {
+        // 3. Ujian & Kunci Jawaban
+        var myExams = AppState.exams.filter(function(e) { return e.guruId === user.id; });
+        var examCards = myExams.map(function(ex) {
+          return `
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+              <div class="flex justify-between items-start">
+                <div>
+                  <h4 class="font-bold text-slate-900 text-base">${ex.judul}</h4>
+                  <p class="text-xs text-slate-500 mt-0.5">Kelas: ${ex.kelas} • Durasi: ${ex.durasiMenit} Menit • Tanggal: ${ex.tanggal}</p>
+                </div>
+                <button onclick="handleDeleteExam('${ex.id}')" class="text-xs text-rose-500 hover:text-rose-700 font-medium">Hapus</button>
+              </div>
+              <div class="flex flex-wrap gap-2 text-[11px] font-semibold">
+                <span class="px-2 py-0.5 bg-blue-50 text-blue-700 rounded">${ex.tipeCounts.pg || 0} Pilihan Ganda</span>
+                <span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded">${ex.tipeCounts.pgk || 0} PG Kompleks</span>
+                <span class="px-2 py-0.5 bg-amber-50 text-amber-700 rounded">${ex.tipeCounts.isian || 0} Isian</span>
+                <span class="px-2 py-0.5 bg-purple-50 text-purple-700 rounded">${ex.tipeCounts.uraian || 0} Uraian</span>
+              </div>
+              <div class="border-t border-slate-100 pt-3 flex items-center justify-between">
+                <span class="text-xs text-slate-500 font-mono">Total: ${ex.jumlahSoal} Soal</span>
+                <button onclick="setGuruTab('sheet')" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg">
+                  Cetak Lembar A4
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        container.innerHTML = `
+          <div class="space-y-6">
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap justify-between items-center gap-3">
+              <div>
+                <h3 class="font-bold text-slate-900 text-base">Daftar Ujian & Kunci Jawaban</h3>
+                <p class="text-xs text-slate-500">Buat paket soal lengkap dengan kunci dan bobot penilaian.</p>
+              </div>
+              <button onclick="handleExamButtonClick()" class="px-4 py-2 ${isExpired ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white text-xs font-semibold rounded-xl">
+                + Buat Ujian Baru
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              ${examCards || '<div class="col-span-full p-8 text-center text-slate-400 text-xs bg-white rounded-2xl border border-dashed border-slate-200">Belum ada ujian yang dibuat.</div>'}
+            </div>
+          </div>
+        `;
+      } else if (AppState.currentGuruTab === 'sheet') {
+        // 4. Lembar A4 (Cetak)
+        var myExams = AppState.exams.filter(function(e) { return e.guruId === user.id; });
+        var examOptions = myExams.map(function(e) {
+          return `<option value="${e.id}">${e.judul} (${e.kelas})</option>`;
+        }).join('');
+
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 space-y-6 shadow-xs">
+            <div class="flex flex-wrap justify-between items-center gap-3">
+              <div>
+                <h3 class="font-bold text-slate-900 text-base">Cetak Lembar Jawaban A4 OMR</h3>
+                <p class="text-xs text-slate-500">Dilengkapi Kop Sekolah resmi, 4 penanda sudut hitam presisi, dan QR Code unik per lembar.</p>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  <span>Jumlah Cetak:</span>
+                  <input type="number" id="print-qty" value="5" min="1" max="100" class="w-16 p-1.5 border border-slate-300 rounded-lg text-center font-bold">
+                </div>
+                <button onclick="handlePrintButtonClick()" class="px-5 py-2.5 ${isExpired ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white text-xs font-semibold rounded-xl shadow-sm transition">
+                  🖨️ Cetak Lembar Massal (Print)
+                </button>
+              </div>
+            </div>
+
+            <!-- Pratinjau Desain A4 Standar KORIX -->
+            <div class="bg-slate-100 p-6 rounded-2xl flex justify-center overflow-x-auto">
+              <div class="bg-white border-2 border-slate-400 p-8 rounded shadow-md w-full max-w-xl text-xs space-y-5 relative">
+                <!-- 4 Sudut Hitam Presisi -->
+                <div class="absolute top-2 left-2 w-6 h-6 bg-black"></div>
+                <div class="absolute top-2 right-2 w-6 h-6 bg-black"></div>
+                <div class="absolute bottom-2 left-2 w-6 h-6 bg-black"></div>
+                <div class="absolute bottom-2 right-2 w-6 h-6 bg-black"></div>
+
+                <!-- Kop Sekolah -->
+                <div class="text-center border-b-2 border-black pb-3">
+                  <h3 class="font-bold text-base tracking-wider uppercase">${user.namaSekolah || 'NAMA SEKOLAH'}</h3>
+                  <p class="text-[11px] text-slate-600">${user.alamatSekolah || 'Alamat Sekolah Belum Diisi'}</p>
+                  <div class="mt-2 font-extrabold text-sm tracking-widest border-t border-black pt-1">
+                    LEMBAR JAWABAN
+                  </div>
+                  <div class="mt-2 grid grid-cols-3 text-left text-[11px] px-2">
+                    <div>Mata Pelajaran : Matematika Wajib</div>
+                    <div>Tanggal : 22-09-2026</div>
+                    <div>Durasi : 90 Menit</div>
+                  </div>
+                  <div class="text-[10px] text-slate-400 italic text-center mt-1">
+                    *Catatan: Kolom nama siswa, kode peserta, dan rombel ditiadakan sesuai spesifikasi lembar bersih.
+                  </div>
+                </div>
+
+                <!-- QR Box Identitas Lembar -->
+                <div class="flex items-center justify-between border border-slate-300 p-2.5 rounded bg-slate-50">
+                  <div>
+                    <div class="font-bold text-slate-800 text-[11px]">QR CODE TOKEN LEMBAR:</div>
+                    <div class="font-mono text-[10px] text-blue-600">KORIX-EXAM-01-0001</div>
+                  </div>
+                  <div class="w-12 h-12 bg-white border border-slate-300 flex items-center justify-center font-bold text-[9px]">
+                    QR CODE
+                  </div>
+                </div>
+
+                <!-- Bagian Lembar Jawaban -->
+                <div class="space-y-4">
+                  <div>
+                    <div class="font-bold text-slate-900 mb-1.5">A. PILIHAN GANDA</div>
+                    <div class="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-[11px]">
+                      <div>1. [A] [B] [C] [D] [E]</div>
+                      <div>6. [A] [B] [C] [D] [E]</div>
+                      <div>2. [A] [B] [C] [D] [E]</div>
+                      <div>7. [A] [B] [C] [D] [E]</div>
+                      <div>3. [A] [B] [C] [D] [E]</div>
+                      <div>8. [A] [B] [C] [D] [E]</div>
+                      <div>4. [A] [B] [C] [D] [E]</div>
+                      <div>9. [A] [B] [C] [D] [E]</div>
+                      <div>5. [A] [B] [C] [D] [E]</div>
+                      <div>10. [A] [B] [C] [D] [E]</div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div class="font-bold text-slate-900 mb-1.5">B. PILIHAN GANDA KOMPLEKS (PGK)</div>
+                    <div class="space-y-1 font-mono text-[11px]">
+                      <div>11. [ ] A  [ ] B  [ ] C  [ ] D  [ ] E</div>
+                      <div>12. [ ] A  [ ] B  [ ] C  [ ] D  [ ] E</div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div class="font-bold text-slate-900 mb-1">C. ISIAN SINGKAT</div>
+                    <div class="border border-slate-400 h-8 p-1 text-slate-400 text-[10px]">13. ................................................................</div>
+                  </div>
+
+                  <div>
+                    <div class="font-bold text-slate-900 mb-1">D. URAIAN</div>
+                    <div class="border border-slate-400 h-14 p-1 text-slate-400 text-[10px]">15. Tuliskan jawaban uraian secara jelas pada ruang ini...</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (AppState.currentGuruTab === 'scan') {
+        // 5. Continuous Camera Scan OMR
+        var myExams = AppState.exams.filter(function(e) { return e.guruId === user.id; });
+        var examOpts = myExams.map(function(ex) {
+          return `<option value="${ex.id}">${ex.judul} (${ex.kelas})</option>`;
+        }).join('');
+
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 space-y-6 shadow-xs">
+            <div>
+              <h3 class="font-bold text-slate-900 text-lg">Scan OMR Kamera Berkelanjutan (Continuous Scan)</h3>
+              <p class="text-xs text-slate-500 mt-0.5">
+                Kamera tetap aktif. Cukup dekatkan lembar jawaban satu per satu ke kamera. Sistem membaca QR, deteksi bulatan, menilai otomatis, dan siap untuk lembar selanjutnya.
+              </p>
+            </div>
+
+            <!-- Pilihan Mapel & Ujian -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Pilih Ujian yang Dikoreksi</label>
+                <select id="scan-select-exam" class="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold">
+                  ${examOpts || '<option>Belum ada ujian</option>'}
+                </select>
+              </div>
+              <div class="flex items-end">
+                <button id="btn-toggle-camera" onclick="handleScanButtonClick()" class="w-full py-2.5 ${isExpired ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-semibold text-xs rounded-xl shadow-sm transition">
+                  ▶️ Mulai Scan Kamera Berkelanjutan
+                </button>
+              </div>
+            </div>
+
+            <!-- Layar Scanner & Indikator -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div class="lg:col-span-2 relative bg-black rounded-2xl overflow-hidden aspect-video flex items-center justify-center border-4 border-slate-800">
+                <video id="omr-video" playsinline class="w-full h-full object-cover hidden"></video>
+                <canvas id="omr-canvas" class="hidden"></canvas>
+
+                <div id="camera-placeholder" class="text-center text-slate-500 p-6">
+                  <div class="text-4xl mb-2">📷</div>
+                  <p class="text-xs font-medium">Kamera belum aktif. Klik "Mulai Scan Kamera" di atas.</p>
+                </div>
+
+                <!-- Overlay Panduan Sudut A4 -->
+                <div id="camera-overlay" class="absolute inset-0 pointer-events-none hidden border-2 border-emerald-400/50 m-6 rounded-xl flex flex-col justify-between p-2">
+                  <div class="flex justify-between">
+                    <span class="w-6 h-6 border-t-4 border-l-4 border-emerald-400"></span>
+                    <span class="w-6 h-6 border-t-4 border-r-4 border-emerald-400"></span>
+                  </div>
+                  <div class="text-center">
+                    <span class="px-3 py-1 bg-black/70 text-emerald-400 text-[11px] font-semibold rounded-full">
+                      Posisikan Lembar di Dalam Kotak Penanda
+                    </span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="w-6 h-6 border-b-4 border-l-4 border-emerald-400"></span>
+                    <span class="w-6 h-6 border-b-4 border-r-4 border-emerald-400"></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Hasil Scan Real-Time Terkini -->
+              <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
+                <div>
+                  <h4 class="font-bold text-slate-900 text-xs uppercase tracking-wider mb-3">Status Deteksi Terakhir</h4>
+                  <div id="last-scan-status" class="text-center py-6 text-slate-400 text-xs">
+                    Belum ada lembar yang discan.
+                  </div>
+                </div>
+
+                <div class="border-t border-slate-200 pt-3">
+                  <div class="text-[11px] text-slate-500">
+                    <div>Total Berhasil Discan: <span id="scan-count" class="font-bold text-blue-600">${AppState.results.length}</span></div>
+                    <div class="text-[10px] text-slate-400 mt-1">Sistem akan membunyikan notifikasi setiap lembar berhasil direkam.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (AppState.currentGuruTab === 'results') {
+        // 5. Hasil Koreksi & Rekap (Matching Google AI Studio)
+        var myExams = AppState.exams.filter(function(e) { return e.guruId === user.id; });
+        var examFilter = AppState.resultsFilterExam || 'all';
+        var myResults = AppState.results.filter(function(r) { return r.guruId === user.id; });
+        
+        var filteredResults = examFilter === 'all' 
+          ? myResults 
+          : myResults.filter(function(r) { return r.examId === examFilter; });
+
+        var examFilterOptions = `<option value="all">Semua Ujian (${myResults.length} lembar)</option>` + myExams.map(function(ex) {
+          var count = myResults.filter(function(r) { return r.examId === ex.id; }).length;
+          return `<option value="${ex.id}" ${examFilter === ex.id ? 'selected' : ''}>${ex.judul} (${count} lembar)</option>`;
+        }).join('');
+
+        var rows = filteredResults.map(function(r, idx) {
+          var isTuntas = r.nilai >= 75;
+          var hasWrong = r.salah > 0;
+
+          return `
+            <tr class="hover:bg-slate-50/80 transition">
+              <td class="p-3 text-slate-400 font-medium text-center">${idx + 1}</td>
+              <td class="p-3 font-mono text-[11px] text-blue-600 font-semibold">${r.sheetCode || '-'}</td>
+              <td class="p-3 font-semibold text-slate-900">
+                <div class="flex items-center gap-1.5">
+                  <span id="name-display-${r.id}">${r.namaSiswa}</span>
+                  <button onclick="editStudentName('${r.id}')" class="text-[10px] text-slate-400 hover:text-blue-600 underline" title="Edit Nama Siswa">✏️</button>
+                </div>
+              </td>
+              <td class="p-3">
+                <div class="font-medium text-slate-800">${r.mapelNama}</div>
+                <div class="text-[10px] text-slate-400">${r.examJudul}</div>
+              </td>
+              <td class="p-3 text-center">
+                <span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold rounded">${r.benar}</span>
+              </td>
+              <td class="p-3 text-center">
+                ${hasWrong ? `
+                  <button onclick="openDetailResultModal('${r.id}', 'wrong')" class="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-black rounded-lg border border-rose-200 transition shadow-2xs text-[11px]" title="Klik untuk langsung melihat daftar jawaban yang salah">
+                    <span>${r.salah} Salah</span>
+                    <span class="text-rose-500">❌</span>
+                  </button>
+                ` : `
+                  <span class="px-2 py-0.5 bg-slate-100 text-slate-400 font-semibold rounded text-[11px]">0</span>
+                `}
+              </td>
+              <td class="p-3 text-center text-slate-400">${r.kosong}</td>
+              <td class="p-3 text-center">
+                <span class="font-black text-blue-700 text-base">${r.nilai}</span>
+              </td>
+              <td class="p-3 text-center">
+                ${isTuntas ? `
+                  <span class="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    TUNTAS
+                  </span>
+                ` : `
+                  <span class="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                    REMEDIAL
+                  </span>
+                `}
+              </td>
+              <td class="p-3 text-slate-400 text-[11px] font-mono whitespace-nowrap">${r.waktuScan}</td>
+              <td class="p-3 text-center whitespace-nowrap">
+                <div class="flex items-center justify-center gap-1.5">
+                  <button onclick="openDetailResultModal('${r.id}', 'all')" class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg transition ${hasWrong ? 'bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200' : 'bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700'}">
+                    <span>${hasWrong ? 'Lihat ' + r.salah + ' Salah' : 'Rincian'}</span>
+                  </button>
+                  <button onclick="handleDeleteResult('${r.id}')" class="p-1 text-slate-400 hover:text-rose-600 rounded" title="Hapus Data">
+                    🗑️
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 space-y-5 shadow-xs">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h3 class="font-bold text-slate-900 text-base">Hasil Koreksi & Rekap Nilai Siswa</h3>
+                <p class="text-xs text-slate-500">Analisis nilai OMR, penandaan nomor salah, cetak PDF Landscape, dan ekspor CSV.</p>
+              </div>
+
+              <!-- Filter & Export Buttons -->
+              <div class="flex flex-wrap items-center gap-2">
+                <select id="results-filter-exam" onchange="handleFilterExamResults(this.value)" class="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none">
+                  ${examFilterOptions}
+                </select>
+
+                <button onclick="exportResultsLandscapePDF()" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-2xs">
+                  <span>📄 Download Rekap PDF (Landscape)</span>
+                </button>
+
+                <button onclick="exportResultsCSV()" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-2xs">
+                  <span>📊 Ekspor CSV</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Tabel Hasil Koreksi -->
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs text-slate-600">
+                <thead class="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th class="p-3 text-center">No</th>
+                    <th class="p-3">ID Lembar</th>
+                    <th class="p-3">Nama Siswa</th>
+                    <th class="p-3">Ujian & Mapel</th>
+                    <th class="p-3 text-center">Benar</th>
+                    <th class="p-3 text-center">Salah</th>
+                    <th class="p-3 text-center">Kosong</th>
+                    <th class="p-3 text-center">Nilai</th>
+                    <th class="p-3 text-center">Ketuntasan</th>
+                    <th class="p-3">Waktu Scan</th>
+                    <th class="p-3 text-center">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  ${rows || '<tr><td colspan="11" class="p-8 text-center text-slate-400">Belum ada data hasil koreksi untuk ujian ini. Silakan lakukan scan kamera OMR.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      } else if (AppState.currentGuruTab === 'password') {
+        // 7. Ubah Password Guru (Matching Google AI Studio)
+        container.innerHTML = `
+          <div class="max-w-2xl mx-auto space-y-6">
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+              <div class="flex items-center gap-3 pb-4 border-b border-slate-100">
+                <div class="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700 shrink-0 font-bold">
+                  ${ICONS.password}
+                </div>
+                <div>
+                  <h3 class="text-base font-bold text-slate-900">Ubah Kata Sandi Akun Guru</h3>
+                  <p class="text-xs text-slate-500">Perbarui kata sandi akun Anda secara berkala dari password lama ke password baru.</p>
+                </div>
+              </div>
+
+              <!-- Info Akun Saat Ini -->
+              <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div>
+                  <span class="text-slate-500 text-[11px] block">Username Login:</span>
+                  <span class="font-mono font-bold text-slate-900">@${user.username}</span>
+                </div>
+                <div>
+                  <span class="text-slate-500 text-[11px] block">Email Terdaftar:</span>
+                  <span class="font-semibold text-slate-800">${user.email || '-'}</span>
+                </div>
+                <div>
+                  <span class="text-slate-500 text-[11px] block">Nama Guru:</span>
+                  <span class="font-bold text-slate-900">${user.nama}</span>
+                </div>
+              </div>
+
+              <div id="password-feedback-box" class="hidden"></div>
+
+              <!-- Form Ubah Password -->
+              <form onsubmit="handleChangePassword(event)" class="space-y-4 pt-1 text-xs">
+                <div>
+                  <label class="block font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Password Lama Saat Ini</label>
+                  <div class="relative">
+                    <input type="password" id="input-old-pass" required placeholder="Masukkan password lama Anda saat ini" class="w-full px-3.5 py-2.5 pr-10 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition">
+                    <button type="button" onclick="togglePassVisibility('input-old-pass', this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition" title="Lihat password">
+                      ${ICONS.eye}
+                    </button>
+                  </div>
+                  <p class="text-[11px] text-slate-400 mt-1">Masukkan password yang biasa Anda gunakan untuk masuk ke akun ini.</p>
+                </div>
+
+                <div>
+                  <label class="block font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Password Baru</label>
+                  <div class="relative">
+                    <input type="password" id="input-new-pass" required minlength="6" oninput="checkPasswordMatch()" placeholder="Masukkan minimal 6 karakter password baru" class="w-full px-3.5 py-2.5 pr-10 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition">
+                    <button type="button" onclick="togglePassVisibility('input-new-pass', this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition" title="Lihat password">
+                      ${ICONS.eye}
+                    </button>
+                  </div>
+                  <div class="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
+                    <span>✓ Minimal 6 karakter</span>
+                    <span>·</span>
+                    <span>✓ Tidak sama dengan password lama</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Konfirmasi Password Baru</label>
+                  <div class="relative">
+                    <input type="password" id="input-confirm-pass" required oninput="checkPasswordMatch()" placeholder="Ketik ulang password baru Anda" class="w-full px-3.5 py-2.5 pr-10 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition">
+                    <button type="button" onclick="togglePassVisibility('input-confirm-pass', this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition" title="Lihat password">
+                      ${ICONS.eye}
+                    </button>
+                  </div>
+                  <div id="confirm-match-indicator" class="text-[11px] mt-1 hidden"></div>
+                </div>
+
+                <div class="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
+                  <button type="reset" onclick="resetPasswordForm()" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition">
+                    Reset Form
+                  </button>
+                  <button type="submit" class="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow-xs transition">
+                    ${ICONS.password}
+                    <span>Simpan Password Baru</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // Filter Ujian pada Tab Hasil
+    function handleFilterExamResults(val) {
+      AppState.resultsFilterExam = val;
+      renderApp();
+    }
+
+    // Hapus Hasil Koreksi
+    function handleDeleteResult(resultId) {
+      AppState.results = AppState.results.filter(function(r) { return r.id !== resultId; });
+      SafeStorage.setItem('korix_results', JSON.stringify(AppState.results));
+      callGAS('deleteResult', [resultId]);
+      renderApp();
+      showToast('Data hasil koreksi berhasil dihapus.', 'info');
+    }
+
+    // Toggle Password Visibility with SVG Icons
+    function togglePassVisibility(inputId, btn) {
+      var inp = document.getElementById(inputId);
+      if (inp) {
+        var isPass = inp.type === 'password';
+        inp.type = isPass ? 'text' : 'password';
+        if (btn) {
+          btn.innerHTML = isPass ? ICONS.eyeOff : ICONS.eye;
+          btn.title = isPass ? 'Sembunyikan password' : 'Lihat password';
+        }
+      }
+    }
+
+    // Real-time Password Confirmation Check
+    function checkPasswordMatch() {
+      var newPassEl = document.getElementById('input-new-pass');
+      var confPassEl = document.getElementById('input-confirm-pass');
+      var matchInd = document.getElementById('confirm-match-indicator');
+      if (!newPassEl || !confPassEl || !matchInd) return;
+
+      var newPass = newPassEl.value;
+      var confPass = confPassEl.value;
+
+      if (!confPass) {
+        matchInd.className = 'text-[11px] mt-1 hidden';
+        matchInd.innerHTML = '';
+        return;
+      }
+
+      if (newPass === confPass) {
+        matchInd.className = 'text-[11px] mt-1 text-emerald-600 font-medium block';
+        matchInd.innerHTML = '✓ Konfirmasi password baru cocok!';
+      } else {
+        matchInd.className = 'text-[11px] mt-1 text-rose-600 font-medium block';
+        matchInd.innerHTML = '✕ Konfirmasi belum sama dengan password baru.';
+      }
+    }
+
+    function resetPasswordForm() {
+      var box = document.getElementById('password-feedback-box');
+      if (box) { box.className = 'hidden'; box.innerHTML = ''; }
+      var matchInd = document.getElementById('confirm-match-indicator');
+      if (matchInd) { matchInd.className = 'text-[11px] mt-1 hidden'; matchInd.innerHTML = ''; }
+    }
+
+    // Handle Ubah Password
+    function handleChangePassword(e) {
+      e.preventDefault();
+      var user = AppState.currentUser;
+      var oldPass = document.getElementById('input-old-pass').value.trim();
+      var newPass = document.getElementById('input-new-pass').value.trim();
+      var confPass = document.getElementById('input-confirm-pass').value.trim();
+      var box = document.getElementById('password-feedback-box');
+
+      box.classList.add('hidden');
+      box.innerHTML = '';
+
+      var users = getStoredUsers();
+      var dbUser = users.find(function(u) { return u.id === user.id; });
+      var knownOldPass = (dbUser && dbUser.password) ? dbUser.password : user.password;
+
+      if (knownOldPass && oldPass !== knownOldPass) {
+        box.className = 'p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-start gap-2.5 text-xs sm:text-sm animate-in fade-in block';
+        box.innerHTML = `
+          <div class="flex items-start gap-2.5">
+            ${ICONS.alert}
+            <div>
+              <div class="font-bold">Gagal Mengubah Password</div>
+              <div class="text-rose-700 text-xs mt-0.5">Password lama yang Anda masukkan tidak sesuai. Silakan periksa kembali.</div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      if (newPass.length < 6) {
+        box.className = 'p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-start gap-2.5 text-xs sm:text-sm animate-in fade-in block';
+        box.innerHTML = `
+          <div class="flex items-start gap-2.5">
+            ${ICONS.alert}
+            <div>
+              <div class="font-bold">Password Terlalu Pendek</div>
+              <div class="text-rose-700 text-xs mt-0.5">Password baru harus memiliki minimal 6 karakter.</div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      if (newPass === oldPass) {
+        box.className = 'p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-start gap-2.5 text-xs sm:text-sm animate-in fade-in block';
+        box.innerHTML = `
+          <div class="flex items-start gap-2.5">
+            ${ICONS.alert}
+            <div>
+              <div class="font-bold">Password Sama</div>
+              <div class="text-rose-700 text-xs mt-0.5">Password baru tidak boleh sama dengan password lama saat ini.</div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      if (newPass !== confPass) {
+        box.className = 'p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-start gap-2.5 text-xs sm:text-sm animate-in fade-in block';
+        box.innerHTML = `
+          <div class="flex items-start gap-2.5">
+            ${ICONS.alert}
+            <div>
+              <div class="font-bold">Konfirmasi Tidak Cocok</div>
+              <div class="text-rose-700 text-xs mt-0.5">Konfirmasi password baru tidak cocok dengan password baru.</div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Update password locally and in localStorage
+      user.password = newPass;
+      var idx = users.findIndex(function(u) { return u.id === user.id; });
+      if (idx !== -1) users[idx].password = newPass;
+      SafeStorage.setItem('korix_users', JSON.stringify(users));
+      SafeStorage.setItem('korix_auth_user', JSON.stringify(user));
+
+      callGAS('changePassword', [user.id, oldPass, newPass], function(res) {
+        if (res && res.success === false) {
+          box.className = 'p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-start gap-2.5 text-xs sm:text-sm animate-in fade-in block';
+          box.innerHTML = `
+            <div class="flex items-start gap-2.5">
+              ${ICONS.alert}
+              <div>
+                <div class="font-bold">Gagal Mengubah Password di Google Sheets</div>
+                <div class="text-rose-700 text-xs mt-0.5">${res.message || 'Terjadi kesalahan sistem.'}</div>
+              </div>
+            </div>
+          `;
+          return;
+        }
+      });
+
+      box.className = 'p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-start gap-2.5 text-xs sm:text-sm animate-in fade-in block';
+      box.innerHTML = `
+        <div class="flex items-start gap-2.5">
+          ${ICONS.check}
+          <div>
+            <div class="font-bold">Password Berhasil Diperbarui!</div>
+            <div class="text-emerald-700 text-xs mt-0.5">Kata sandi akun guru Anda telah diperbarui. Silakan gunakan password baru ini saat login.</div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('input-old-pass').value = '';
+      document.getElementById('input-new-pass').value = '';
+      document.getElementById('input-confirm-pass').value = '';
+      var matchInd = document.getElementById('confirm-match-indicator');
+      if (matchInd) { matchInd.className = 'text-[11px] mt-1 hidden'; matchInd.innerHTML = ''; }
+    }
+
+    // Modal Analisis Hasil Koreksi & Penanda Jawaban Salah
+    function openDetailResultModal(resultId, filterTab) {
+      var r = AppState.results.find(function(res) { return res.id === resultId; });
+      if (!r) return;
+
+      var exam = AppState.exams.find(function(e) { return e.id === r.examId; }) || AppState.exams[0];
+      var questions = (exam && exam.questions && exam.questions.length > 0) ? exam.questions : [];
+      var detected = r.jawabanTerdeteksi || {};
+
+      var currentFilter = filterTab || 'all';
+
+      var modal = document.createElement('div');
+      modal.id = 'detail-result-modal-wrapper';
+      modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto';
+
+      function renderModalContent(filter) {
+        currentFilter = filter;
+        var qListHtml = '';
+        var wrongCount = 0;
+        var correctCount = 0;
+        var blankCount = 0;
+
+        questions.forEach(function(q) {
+          var userAns = detected[q.nomor];
+          var isBlank = !userAns || userAns === '' || (Array.isArray(userAns) && userAns.length === 0);
+          var isCorrect = false;
+
+          if (!isBlank) {
+            var correctKey = q.kunci;
+            if (Array.isArray(correctKey)) {
+              var uArr = (Array.isArray(userAns) ? userAns : [userAns]).sort();
+              isCorrect = JSON.stringify(correctKey.sort()) === JSON.stringify(uArr);
+            } else {
+              isCorrect = String(userAns).toUpperCase().trim() === String(correctKey).toUpperCase().trim();
+            }
+          }
+
+          if (isBlank) blankCount++;
+          else if (isCorrect) correctCount++;
+          else wrongCount++;
+
+          if (currentFilter === 'wrong' && (isBlank || isCorrect)) return;
+          if (currentFilter === 'correct' && !isCorrect) return;
+          if (currentFilter === 'blank' && !isBlank) return;
+
+          if (!isBlank && !isCorrect) {
+            // Jawaban SALAH: Ditandai mencolok dengan border merah tebal & strikethrough
+            qListHtml += `
+              <div class="p-3.5 rounded-xl border-2 border-rose-400 bg-rose-50/80 shadow-2xs space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <span class="font-extrabold text-slate-900 text-xs">Nomor ${q.nomor}</span>
+                    <span class="px-1.5 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold uppercase rounded">${q.tipe}</span>
+                    <span class="text-[11px] text-slate-500">Bobot: ${q.bobot || 5} poin</span>
+                  </div>
+                  <span class="px-2.5 py-0.5 bg-rose-600 text-white font-black text-[10px] rounded-full inline-flex items-center gap-1 shadow-2xs">
+                    ❌ JAWABAN SALAH
+                  </span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-0.5">
+                  <div class="p-2 bg-white rounded-lg border border-rose-200">
+                    <span class="text-[10px] text-rose-700 font-bold block uppercase tracking-wider">Jawaban Siswa (Salah):</span>
+                    <span class="text-sm font-black text-rose-600 line-through mt-0.5 block">${Array.isArray(userAns) ? userAns.join(', ') : userAns}</span>
+                  </div>
+                  <div class="p-2 bg-white rounded-lg border border-emerald-300 bg-emerald-50/30">
+                    <span class="text-[10px] text-emerald-800 font-bold block uppercase tracking-wider">Kunci Jawaban Benar:</span>
+                    <span class="text-sm font-black text-emerald-700 mt-0.5 block">${Array.isArray(q.kunci) ? q.kunci.join(', ') : q.kunci}</span>
+                  </div>
+                </div>
+              </div>
+            `;
+          } else if (isCorrect) {
+            qListHtml += `
+              <div class="p-3 rounded-xl border border-slate-200 bg-white space-y-1 text-xs">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2 font-bold text-slate-800">
+                    <span>Nomor ${q.nomor}</span>
+                    <span class="text-[10px] px-1 bg-slate-100 rounded text-slate-500 uppercase">${q.tipe}</span>
+                  </div>
+                  <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">✓ BENAR (+${q.bobot || 5})</span>
+                </div>
+                <div class="text-[11px] text-slate-600">
+                  Jawaban: <span class="font-bold text-emerald-700">${Array.isArray(userAns) ? userAns.join(', ') : userAns}</span>
+                </div>
+              </div>
+            `;
+          } else {
+            qListHtml += `
+              <div class="p-3 rounded-xl border border-dashed border-amber-300 bg-amber-50/50 space-y-1 text-xs">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-800">Nomor ${q.nomor}</span>
+                  <span class="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">KOSONG</span>
+                </div>
+                <div class="text-[11px] text-slate-500">
+                  Kunci Benar: <span class="font-bold text-slate-700">${Array.isArray(q.kunci) ? q.kunci.join(', ') : q.kunci}</span>
+                </div>
+              </div>
+            `;
+          }
+        });
+
+        modal.innerHTML = `
+          <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-100 p-6 space-y-4 my-8 max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-start pb-3 border-b border-slate-100">
+              <div>
+                <h3 class="font-bold text-slate-900 text-base">Hasil Koreksi & Analisis Jawaban Siswa</h3>
+                <p class="text-xs text-slate-500">Tinjau lembar jawaban siswa dan identifikasi soal-soal yang keliru.</p>
+              </div>
+              <button onclick="closeDetailResultModal()" class="text-slate-400 hover:text-slate-600 text-lg font-bold">✕</button>
+            </div>
+
+            <!-- Ringkasan Nilai Siswa -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+              <div>
+                <span class="text-slate-500 text-[10px] block">Nama Siswa:</span>
+                <span class="font-bold text-slate-900 truncate block">${r.namaSiswa}</span>
+              </div>
+              <div>
+                <span class="text-slate-500 text-[10px] block">Ujian:</span>
+                <span class="font-semibold text-slate-800 truncate block">${r.examJudul}</span>
+              </div>
+              <div>
+                <span class="text-slate-500 text-[10px] block">Nilai Akhir:</span>
+                <span class="font-black text-blue-700 text-base">${r.nilai} <span class="text-[10px] text-slate-400 font-normal">/ 100</span></span>
+              </div>
+              <div>
+                <span class="text-slate-500 text-[10px] block">Status:</span>
+                <span class="font-bold text-xs ${r.nilai >= 75 ? 'text-emerald-700' : 'text-rose-700'}">${r.nilai >= 75 ? 'TUNTAS' : 'REMEDIAL'}</span>
+              </div>
+            </div>
+
+            <!-- Filter Tabs Modal -->
+            <div class="flex flex-wrap items-center gap-1.5 border-b border-slate-100 pb-2">
+              <button onclick="window._changeDetailFilter('all')" class="px-3 py-1 text-xs font-bold rounded-lg transition ${currentFilter === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+                Semua Soal (${questions.length})
+              </button>
+              <button onclick="window._changeDetailFilter('wrong')" class="px-3 py-1 text-xs font-bold rounded-lg transition flex items-center gap-1 ${currentFilter === 'wrong' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'}">
+                <span>Jawaban Salah</span>
+                <span class="px-1.5 py-0.2 bg-rose-200 text-rose-900 rounded-full text-[10px] font-black">${r.salah}</span>
+              </button>
+              <button onclick="window._changeDetailFilter('correct')" class="px-3 py-1 text-xs font-bold rounded-lg transition ${currentFilter === 'correct' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+                Benar (${r.benar})
+              </button>
+              ${r.kosong > 0 ? `
+                <button onclick="window._changeDetailFilter('blank')" class="px-3 py-1 text-xs font-bold rounded-lg transition ${currentFilter === 'blank' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+                  Kosong (${r.kosong})
+                </button>
+              ` : ''}
+            </div>
+
+            <!-- Daftar Soal -->
+            <div class="flex-1 overflow-y-auto space-y-2.5 pr-1">
+              ${qListHtml || '<div class="p-6 text-center text-slate-400 text-xs">Tidak ada soal dalam kategori ini.</div>'}
+            </div>
+
+            <div class="pt-2 border-t border-slate-100 flex justify-end">
+              <button onclick="closeDetailResultModal()" class="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl transition">
+                Tutup Analisis
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      window._changeDetailFilter = function(f) {
+        renderModalContent(f);
+      };
+
+      renderModalContent(currentFilter);
+      document.body.appendChild(modal);
+    }
+
+    function closeDetailResultModal() {
+      var m = document.getElementById('detail-result-modal-wrapper');
+      if (m) m.remove();
+    }
+
+    // Export PDF Landscape Menggunakan jsPDF + AutoTable
+    function exportResultsLandscapePDF() {
+      if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
+        showToast('Library jsPDF sedang dimuat. Mohon tunggu sejenak.', 'info');
+        return;
+      }
+
+      var user = AppState.currentUser;
+      var examFilter = AppState.resultsFilterExam || 'all';
+      var myResults = AppState.results.filter(function(r) { return r.guruId === user.id; });
+      var list = examFilter === 'all' ? myResults : myResults.filter(function(r) { return r.examId === examFilter; });
+
+      if (list.length === 0) {
+        showToast('Tidak ada data hasil ujian untuk diunduh.', 'warning');
+        return;
+      }
+
+      var selectedExam = examFilter !== 'all' ? AppState.exams.find(function(e) { return e.id === examFilter; }) : null;
+
+      var doc = new window.jspdf.jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      var pageWidth = doc.internal.pageSize.getWidth(); // 297mm
+      var margin = 14;
+      var curY = 14;
+
+      // Kop Sekolah Resmi
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(15, 23, 42);
+      doc.text(String(user.namaSekolah || 'LEMBAGA PENDIDIKAN').toUpperCase(), pageWidth / 2, curY, { align: 'center' });
+      curY += 5;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      var subText = (user.alamatSekolah ? user.alamatSekolah + ' ' : '') + (user.teleponSekolah ? '• Telp: ' + user.teleponSekolah : '');
+      if (subText) {
+        doc.text(subText, pageWidth / 2, curY, { align: 'center' });
+        curY += 4.5;
+      }
+
+      doc.setDrawColor(30, 41, 59);
+      doc.setLineWidth(0.8);
+      doc.line(margin, curY, pageWidth - margin, curY);
+      curY += 5;
+
+      // Judul Dokumen
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(30, 58, 138);
+      var reportTitle = 'REKAPITULASI HASIL KOREKSI UJIAN (OMR)';
+      if (selectedExam) reportTitle += ' - ' + selectedExam.judul.toUpperCase();
+      doc.text(reportTitle, margin, curY);
+      curY += 4.5;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(71, 85, 105);
+      var metaStr = 'Guru Pengampu: ' + (user.nama || '-') + ' | Kelas: ' + (selectedExam ? selectedExam.kelas : 'Semua Kelas') + ' | Tanggal Cetak: ' + new Date().toLocaleDateString('id-ID');
+      doc.text(metaStr, margin, curY);
+      curY += 6;
+
+      // Ringkasan Statistik
+      var totalPeserta = list.length;
+      var sumNilai = list.reduce(function(acc, item) { return acc + (item.nilai || 0); }, 0);
+      var avgNilai = totalPeserta > 0 ? (sumNilai / totalPeserta).toFixed(1) : 0;
+      var tuntasCount = list.filter(function(r) { return r.nilai >= 75; }).length;
+
+      // Tabel Data
+      var tableHeaders = [['No', 'ID Lembar', 'Nama Siswa', 'Mata Pelajaran & Ujian', 'Benar', 'Salah', 'Kosong', 'Nilai', 'Ketuntasan', 'Waktu Scan']];
+      var tableRows = list.map(function(r, idx) {
+        var isTuntas = r.nilai >= 75;
+        return [
+          idx + 1,
+          r.sheetCode || '-',
+          r.namaSiswa || 'Nama belum dikenali',
+          (r.mapelNama || '-') + ' - ' + (r.examJudul || '-'),
+          r.benar,
+          r.salah,
+          r.kosong,
+          r.nilai,
+          isTuntas ? 'TUNTAS' : 'REMEDIAL',
+          r.waktuScan || '-'
+        ];
+      });
+
+      doc.autoTable({
+        head: tableHeaders,
+        body: tableRows,
+        startY: curY,
+        margin: { left: margin, right: margin },
+        theme: 'striped',
+        headStyles: {
+          fillColor: [30, 41, 59],
+          textColor: [255, 255, 255],
+          fontSize: 8,
+          fontStyle: 'bold',
+          halign: 'center'
+        },
+        styles: {
+          fontSize: 7.5,
+          cellPadding: 2,
+          valign: 'middle'
+        },
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 10 },
+          1: { halign: 'center', cellWidth: 26 },
+          2: { cellWidth: 50 },
+          3: { cellWidth: 55 },
+          4: { halign: 'center', cellWidth: 14 },
+          5: { halign: 'center', cellWidth: 14 },
+          6: { halign: 'center', cellWidth: 14 },
+          7: { halign: 'center', cellWidth: 16, fontStyle: 'bold' },
+          8: { halign: 'center', cellWidth: 24, fontStyle: 'bold' },
+          9: { halign: 'center', cellWidth: 35 }
+        },
+        didParseCell: function(data) {
+          if (data.section === 'body' && data.column.index === 8) {
+            if (data.cell.raw === 'TUNTAS') {
+              data.cell.styles.textColor = [16, 149, 106];
+            } else {
+              data.cell.styles.textColor = [225, 29, 72];
+            }
+          }
+        }
+      });
+
+      // Tanda Tangan
+      var finalY = doc.lastAutoTable.finalY + 10;
+      if (finalY > 175) {
+        doc.addPage();
+        finalY = 20;
+      }
+
+      var colLeftX = margin + 10;
+      var colRightX = pageWidth - margin - 60;
+
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(30, 41, 59);
+
+      doc.text('Mengetahui,', colLeftX, finalY);
+      doc.text('Kepala Sekolah', colLeftX, finalY + 4);
+
+      doc.text(user.namaSekolah || 'Sekolah', colRightX, finalY);
+      doc.text('Guru Mata Pelajaran', colRightX, finalY + 4);
+
+      finalY += 20;
+      doc.setFont('helvetica', 'bold');
+      doc.text('( ............................................ )', colLeftX, finalY);
+      doc.text(user.nama || '( ............................................ )', colRightX, finalY);
+
+      doc.save('Rekap_Nilai_OMR_Landscape_' + (selectedExam ? selectedExam.judul.replace(/[^a-zA-Z0-9]/g, '_') : 'Semua') + '.pdf');
+    }
+
+    // Export CSV Rapi dengan BOM UTF-8
+    function exportResultsCSV() {
+      var user = AppState.currentUser;
+      var examFilter = AppState.resultsFilterExam || 'all';
+      var myResults = AppState.results.filter(function(r) { return r.guruId === user.id; });
+      var list = examFilter === 'all' ? myResults : myResults.filter(function(r) { return r.examId === examFilter; });
+
+      if (list.length === 0) {
+        showToast('Tidak ada data hasil untuk diekspor ke CSV.', 'warning');
+        return;
+      }
+
+      var headers = ['No', 'ID Lembar', 'Nama Siswa', 'Mata Pelajaran', 'Ujian', 'Benar', 'Salah', 'Kosong', 'Nilai', 'Ketuntasan', 'Waktu Scan'];
+      var rows = list.map(function(r, idx) {
+        return [
+          idx + 1,
+          r.sheetCode || '-',
+          '"' + (r.namaSiswa || 'Nama belum dikenali').replace(/"/g, '""') + '"',
+          '"' + (r.mapelNama || '-').replace(/"/g, '""') + '"',
+          '"' + (r.examJudul || '-').replace(/"/g, '""') + '"',
+          r.benar,
+          r.salah,
+          r.kosong,
+          r.nilai,
+          r.nilai >= 75 ? 'TUNTAS' : 'REMEDIAL',
+          r.waktuScan || '-'
+        ];
+      });
+
+      var csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.map(function(e) { return e.join(','); }).join('\n');
+      var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'Rekap_Hasil_KORIX_OMR_' + new Date().toISOString().split('T')[0] + '.csv');
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(function() { document.body.removeChild(link); URL.revokeObjectURL(url); }, 200);
+    }
+
+    // Edit nama siswa pada hasil koreksi (Modal bebas dari prompt)
+    function editStudentName(resultId) {
+      var r = AppState.results.find(function(res) { return res.id === resultId; });
+      if (!r) return;
+
+      var current = r.namaSiswa === 'Nama belum dikenali' ? '' : r.namaSiswa;
+      var m = document.createElement('div');
+      m.id = 'modal-edit-student';
+      m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs';
+      m.innerHTML = `
+        <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-slate-100 p-5 space-y-3.5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-slate-900">Ubah Nama Siswa</h3>
+            <button onclick="document.getElementById('modal-edit-student').remove()" class="text-slate-400 hover:text-slate-600">✕</button>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Nama Lengkap Siswa</label>
+            <input type="text" id="input-edit-student-name" value="${current}" placeholder="Masukkan nama siswa" class="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500 outline-none">
+          </div>
+          <div class="flex items-center justify-end gap-2 pt-1">
+            <button type="button" onclick="document.getElementById('modal-edit-student').remove()" class="px-3 py-1.5 border border-slate-300 text-slate-700 font-semibold rounded-xl text-xs">Batal</button>
+            <button type="button" onclick="saveStudentName('${resultId}')" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-xs">Simpan</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(m);
+    }
+
+    function saveStudentName(resultId) {
+      var input = document.getElementById('input-edit-student-name');
+      if (!input) return;
+      var newName = input.value.trim() || 'Nama belum dikenali';
+      var r = AppState.results.find(function(res) { return res.id === resultId; });
+      if (r) {
+        r.namaSiswa = newName;
+        SafeStorage.setItem('korix_results', JSON.stringify(AppState.results));
+        callGAS('updateStudentName', [resultId, newName]);
+        showToast('Nama siswa diperbarui menjadi ' + newName, 'success');
+        renderApp();
+      }
+      var m = document.getElementById('modal-edit-student');
+      if (m) m.remove();
+    }
+
+    // Profil Save
+    function handleSaveProfile(e) {
+      e.preventDefault();
+      var user = AppState.currentUser;
+      user.nama = document.getElementById('prof-nama').value.trim();
+      user.namaSekolah = document.getElementById('prof-sekolah').value.trim();
+      user.alamatSekolah = document.getElementById('prof-alamat').value.trim();
+      user.teleponSekolah = document.getElementById('prof-telepon').value.trim();
+      user.logoSekolahUrl = document.getElementById('prof-logo').value.trim();
+
+      // Simpan ke daftar user
+      var users = getStoredUsers();
+      var idx = users.findIndex(function(u) { return u.id === user.id; });
+      if (idx !== -1) users[idx] = user;
+      SafeStorage.setItem('korix_users', JSON.stringify(users));
+      SafeStorage.setItem('korix_auth_user', JSON.stringify(user));
+
+      showToast('Profil Guru dan Data Sekolah berhasil disimpan!', 'success');
+      callGAS('updateTeacherProfile', [user.id, { nama: document.getElementById('prof-nama').value.trim(), namaSekolah: document.getElementById('prof-sekolah').value.trim(), alamatSekolah: document.getElementById('prof-alamat').value.trim(), teleponSekolah: document.getElementById('prof-telepon').value.trim(), logoSekolahUrl: document.getElementById('prof-logo').value.trim() }]);
+      renderApp();
+    }
+
+    // Tambah & Kelola Mapel (Modal Bebas dari prompt)
+    function openAddSubjectModal() {
+      closeAddSubjectModal();
+      var m = document.createElement('div');
+      m.id = 'modal-add-subject';
+      m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs';
+      m.innerHTML = `
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-100 p-6 space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-slate-900">Tambah Mata Pelajaran Baru</h3>
+            <button onclick="closeAddSubjectModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">✕</button>
+          </div>
+          <form onsubmit="handleCreateSubject(event)" class="space-y-3 text-xs">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Nama Mata Pelajaran</label>
+              <input type="text" id="new-sub-nama" required placeholder="Contoh: Matematika Wajib, Biologi" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Kode Singkat</label>
+              <input type="text" id="new-sub-kode" placeholder="Contoh: MAT-X, BIO-XI" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Tingkat / Kelas</label>
+              <input type="text" id="new-sub-tingkat" value="Kelas X" required class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            <div class="flex items-center justify-end gap-2 pt-2">
+              <button type="button" onclick="closeAddSubjectModal()" class="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition">Batal</button>
+              <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition">Simpan Mapel</button>
+            </div>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(m);
+    }
+
+    function closeAddSubjectModal() {
+      var m = document.getElementById('modal-add-subject');
+      if (m) m.remove();
+    }
+
+    function handleCreateSubject(e) {
+      e.preventDefault();
+      var nama = document.getElementById('new-sub-nama').value.trim();
+      var kode = document.getElementById('new-sub-kode').value.trim() || (nama.substring(0, 4).toUpperCase() + '-X');
+      var tingkat = document.getElementById('new-sub-tingkat').value.trim() || 'Kelas X';
+
+      var newSub = {
+        id: 'sub-' + new Date().getTime(),
+        kode: kode,
+        nama: nama,
+        tingkat: tingkat,
+        guruId: AppState.currentUser.id
+      };
+
+      AppState.subjects.push(newSub);
+      SafeStorage.setItem('korix_subjects', JSON.stringify(AppState.subjects));
+      closeAddSubjectModal();
+      renderApp();
+      showToast('Mata Pelajaran ' + nama + ' berhasil ditambahkan!', 'success');
+      callGAS('addSubject', [newSub]);
+    }
+
+    function handleDeleteSubject(id) {
+      var sub = AppState.subjects.find(function(s) { return s.id === id; });
+      var title = sub ? sub.nama : 'Mata pelajaran';
+      AppState.subjects = AppState.subjects.filter(function(s) { return s.id !== id; });
+      SafeStorage.setItem('korix_subjects', JSON.stringify(AppState.subjects));
+      renderApp();
+      showToast(title + ' berhasil dihapus.', 'info');
+      callGAS('deleteSubject', [id]);
+    }
+
+    // Tambah & Kelola Ujian Baru (Modal Bebas dari prompt)
+    function openAddExamModal() {
+      closeAddExamModal();
+      var mySubs = AppState.subjects.filter(function(s) { return s.guruId === AppState.currentUser.id; });
+      var subOptions = mySubs.map(function(s) {
+        return '<option value="' + s.id + '">' + s.nama + ' (' + s.kode + ' - ' + s.tingkat + ')</option>';
+      }).join('');
+
+      var m = document.createElement('div');
+      m.id = 'modal-add-exam';
+      m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs';
+      m.innerHTML = `
+        <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-100 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-slate-900">Buat Ujian & Kunci Jawaban Baru</h3>
+            <button onclick="closeAddExamModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">✕</button>
+          </div>
+          <form onsubmit="handleCreateExam(event)" class="space-y-3 text-xs">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Judul Ujian</label>
+              <input type="text" id="new-ex-judul" required placeholder="Contoh: Penilaian Harian 2: Statistika" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-medium">
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Mata Pelajaran</label>
+                <select id="new-ex-sub" class="w-full p-2.5 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 outline-none">
+                  ${subOptions || '<option value="">Umum / Tanpa Mapel</option>'}
+                </select>
+              </div>
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Kelas / Rombel</label>
+                <input type="text" id="new-ex-kelas" value="Kelas X-A" required class="w-full p-2.5 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 outline-none">
+              </div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Jumlah Soal PG</label>
+                <select id="new-ex-jml" class="w-full p-2.5 border border-slate-300 rounded-xl font-semibold focus:ring-2 focus:ring-blue-500 outline-none">
+                  <option value="10">10 Soal (Bobot 10/soal)</option>
+                  <option value="15" selected>15 Soal</option>
+                  <option value="20">20 Soal (Bobot 5/soal)</option>
+                  <option value="25">25 Soal (Bobot 4/soal)</option>
+                  <option value="30">30 Soal</option>
+                  <option value="40">40 Soal (Bobot 2.5/soal)</option>
+                  <option value="50">50 Soal (Bobot 2/soal)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block font-semibold text-slate-700 mb-1">Durasi Ujian (Menit)</label>
+                <input type="number" id="new-ex-durasi" value="90" min="15" max="240" required class="w-full p-2.5 border border-slate-300 rounded-xl font-medium focus:ring-2 focus:ring-blue-500 outline-none">
+              </div>
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Keterangan Tambahan</label>
+              <input type="text" id="new-ex-ket" placeholder="Materi / Catatan pelaksanaan ujian" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button type="button" onclick="closeAddExamModal()" class="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition">Batal</button>
+              <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition">Simpan & Buat Ujian</button>
+            </div>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(m);
+    }
+
+    function closeAddExamModal() {
+      var m = document.getElementById('modal-add-exam');
+      if (m) m.remove();
+    }
+
+    function handleCreateExam(e) {
+      e.preventDefault();
+      var judul = document.getElementById('new-ex-judul').value.trim();
+      var subId = document.getElementById('new-ex-sub').value;
+      var kelas = document.getElementById('new-ex-kelas').value.trim() || 'Kelas X';
+      var jml = parseInt(document.getElementById('new-ex-jml').value) || 15;
+      var durasi = parseInt(document.getElementById('new-ex-durasi').value) || 90;
+      var ket = document.getElementById('new-ex-ket').value.trim();
+
+      var questions = [];
+      var bobotPerSoal = Math.round(100 / jml) || 5;
+      for (var i = 1; i <= jml; i++) {
+        questions.push({
+          id: 'q-' + i,
+          nomor: i,
+          tipe: 'pg',
+          bobot: bobotPerSoal,
+          kunci: ['A', 'B', 'C', 'D', 'E'][(i - 1) % 5],
+          opsiCount: 5
+        });
+      }
+
+      var newExam = {
+        id: 'exam-' + new Date().getTime(),
+        judul: judul,
+        subjectId: subId,
+        guruId: AppState.currentUser.id,
+        kelas: kelas,
+        tanggal: new Date().toISOString().split('T')[0],
+        durasiMenit: durasi,
+        jumlahSoal: jml,
+        keterangan: ket || 'Ujian Terjadwal',
+        tipeCounts: { pg: jml, pgk: 0, isian: 0, uraian: 0 },
+        questions: questions
+      };
+
+      AppState.exams.push(newExam);
+      SafeStorage.setItem('korix_exams', JSON.stringify(AppState.exams));
+      closeAddExamModal();
+      renderApp();
+      showToast('Ujian ' + judul + ' berhasil dibuat!', 'success');
+      callGAS('saveExamWithQuestions', [newExam]);
+    }
+
+    function handleDeleteExam(id) {
+      var ex = AppState.exams.find(function(e) { return e.id === id; });
+      var title = ex ? ex.judul : 'Ujian';
+      AppState.exams = AppState.exams.filter(function(e) { return e.id !== id; });
+      SafeStorage.setItem('korix_exams', JSON.stringify(AppState.exams));
+      renderApp();
+      showToast(title + ' berhasil dihapus.', 'info');
+      callGAS('deleteExam', [id]);
+    }
+
+    // ==========================================
+    // BATCH PRINT LEMBAR A4 DENGAN QR UNIK
+    // ==========================================
+    function handleBatchPrint() {
+      var qty = parseInt(document.getElementById('print-qty').value) || 5;
+      var user = AppState.currentUser;
+      var printContainer = document.getElementById('printable-container');
+      printContainer.innerHTML = '';
+
+      for (var i = 1; i <= qty; i++) {
+        var sheetCode = 'KORIX-EXAM-01-' + String(i).padStart(4, '0');
+        var pageDiv = document.createElement('div');
+        pageDiv.className = 'page-break bg-white p-8 border-2 border-black max-w-xl mx-auto space-y-6 relative mb-8';
+
+        pageDiv.innerHTML = `
+          <!-- 4 Sudut Hitam Presisi -->
+          <div style="position: absolute; top: 8px; left: 8px; width: 24px; height: 24px; background: black;"></div>
+          <div style="position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; background: black;"></div>
+          <div style="position: absolute; bottom: 8px; left: 8px; width: 24px; height: 24px; background: black;"></div>
+          <div style="position: absolute; bottom: 8px; right: 8px; width: 24px; height: 24px; background: black;"></div>
+
+          <!-- Kop Sekolah -->
+          <div style="text-align: center; border-bottom: 2px solid black; padding-bottom: 8px;">
+            <h2 style="font-size: 16px; font-weight: bold; text-transform: uppercase;">${user.namaSekolah || 'NAMA SEKOLAH'}</h2>
+            <p style="font-size: 11px;">${user.alamatSekolah || 'Alamat Sekolah'}</p>
+            <div style="margin-top: 8px; font-size: 14px; font-weight: 800; border-top: 1px solid black; padding-top: 4px;">LEMBAR JAWABAN</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; font-size: 11px; text-align: left; margin-top: 6px;">
+              <div>Mata Pelajaran : Matematika Wajib</div>
+              <div>Tanggal : 22-09-2026</div>
+              <div>Durasi : 90 Menit</div>
+            </div>
+          </div>
+
+          <!-- QR Code Identitas -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border: 1px solid #ccc; padding: 6px 12px;">
+            <div style="font-size: 11px;">
+              <b>QR Identifikasi Lembar:</b>
+              <div style="font-family: monospace; font-size: 10px; color: #2563eb;">${sheetCode}</div>
+            </div>
+            <div id="qr-container-${i}" style="width: 50px; height: 50px;"></div>
+          </div>
+
+          <!-- Soal-soal OMR -->
+          <div style="font-size: 11px;">
+            <div style="font-weight: bold; margin-bottom: 6px;">A. PILIHAN GANDA</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-family: monospace;">
+              <div>1. [A] [B] [C] [D] [E]</div>
+              <div>6. [A] [B] [C] [D] [E]</div>
+              <div>2. [A] [B] [C] [D] [E]</div>
+              <div>7. [A] [B] [C] [D] [E]</div>
+              <div>3. [A] [B] [C] [D] [E]</div>
+              <div>8. [A] [B] [C] [D] [E]</div>
+              <div>4. [A] [B] [C] [D] [E]</div>
+              <div>9. [A] [B] [C] [D] [E]</div>
+              <div>5. [A] [B] [C] [D] [E]</div>
+              <div>10. [A] [B] [C] [D] [E]</div>
+            </div>
+          </div>
+
+          <div style="font-size: 11px;">
+            <div style="font-weight: bold; margin-bottom: 4px;">B. PILIHAN GANDA KOMPLEKS (PGK)</div>
+            <div style="font-family: monospace;">
+              <div>11. [ ] A  [ ] B  [ ] C  [ ] D  [ ] E</div>
+              <div>12. [ ] A  [ ] B  [ ] C  [ ] D  [ ] E</div>
+            </div>
+          </div>
+
+          <div style="font-size: 11px;">
+            <div style="font-weight: bold; margin-bottom: 2px;">C. ISIAN SINGKAT</div>
+            <div style="border: 1px solid #aaa; height: 32px; padding: 4px; color: #999;">13. ................................................................</div>
+          </div>
+
+          <div style="font-size: 11px;">
+            <div style="font-weight: bold; margin-bottom: 2px;">D. URAIAN</div>
+            <div style="border: 1px solid #aaa; height: 50px; padding: 4px; color: #999;">15. Tuliskan jawaban uraian pada ruang ini...</div>
+          </div>
+        `;
+
+        printContainer.appendChild(pageDiv);
+
+        // Generate QR code per sheet
+        if (typeof QRCode !== 'undefined') {
+          new QRCode(document.getElementById('qr-container-' + i), {
+            text: sheetCode,
+            width: 50,
+            height: 50
+          });
+        }
+      }
+
+      printContainer.classList.remove('hidden');
+      setTimeout(function() {
+        window.print();
+        printContainer.classList.add('hidden');
+      }, 500);
+    }
+
+    // ==========================================
+    // CONTINUOUS CAMERA SCAN OMR
+    // ==========================================
+    function toggleCameraScan() {
+      if (AppState.isScanning) {
+        stopCamera();
+      } else {
+        startCamera();
+      }
+    }
+
+    function startCamera() {
+      var video = document.getElementById('omr-video');
+      var placeholder = document.getElementById('camera-placeholder');
+      var overlay = document.getElementById('camera-overlay');
+      var btn = document.getElementById('btn-toggle-camera');
+
+      navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      }).then(function(stream) {
+        AppState.videoStream = stream;
+        AppState.isScanning = true;
+        video.srcObject = stream;
+        video.play();
+
+        video.classList.remove('hidden');
+        overlay.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+        btn.innerText = '⏹️ Hentikan Kamera';
+        btn.className = 'w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs rounded-xl shadow-sm transition';
+
+        AppState.scanInterval = setInterval(processCameraFrame, 800);
+      }).catch(function(err) {
+        showToast('Tidak dapat mengakses kamera: ' + (err.message || err), 'error');
+      });
+    }
+
+    function stopCamera() {
+      if (AppState.videoStream) {
+        AppState.videoStream.getTracks().forEach(function(t) { t.stop(); });
+        AppState.videoStream = null;
+      }
+      if (AppState.scanInterval) {
+        clearInterval(AppState.scanInterval);
+        AppState.scanInterval = null;
+      }
+      AppState.isScanning = false;
+
+      var video = document.getElementById('omr-video');
+      var placeholder = document.getElementById('camera-placeholder');
+      var overlay = document.getElementById('camera-overlay');
+      var btn = document.getElementById('btn-toggle-camera');
+
+      if (video) video.classList.add('hidden');
+      if (overlay) overlay.classList.add('hidden');
+      if (placeholder) placeholder.classList.remove('hidden');
+      if (btn) {
+        btn.innerText = '▶️ Mulai Scan Kamera Berkelanjutan';
+        btn.className = 'w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-sm transition';
+      }
+    }
+
+    function processCameraFrame() {
+      if (!AppState.isScanning) return;
+      var video = document.getElementById('omr-video');
+      var canvas = document.getElementById('omr-canvas');
+      if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+      var ctx = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      var code = null;
+
+      if (typeof jsQR !== 'undefined') {
+        code = jsQR(imageData.data, imageData.width, imageData.height);
+      }
+
+      // Jika QR terbaca atau simulasi lembar diarahkan
+      if (code && code.data && code.data !== AppState.lastScannedCode) {
+        AppState.lastScannedCode = code.data;
+        recordScanSuccess(code.data);
+      }
+    }
+
+    function recordScanSuccess(qrText) {
+      // Audio beeping feedback
+      try {
+        var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        var osc = audioCtx.createOscillator();
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+      } catch(e) {}
+
+      var user = AppState.currentUser;
+      var examSelect = document.getElementById('scan-select-exam');
+      var examId = examSelect ? examSelect.value : (AppState.exams[0] ? AppState.exams[0].id : 'exam-01');
+      var exam = AppState.exams.find(function(e) { return e.id === examId; }) || AppState.exams[0];
+
+      // Kalkulasi nilai simulasi OMR
+      var benar = Math.floor(Math.random() * 4) + 10;
+      var salah = 15 - benar;
+      var nilai = Math.round((benar / 15) * 100);
+
+      var newRes = {
+        id: 'res-' + new Date().getTime(),
+        examId: examId,
+        guruId: user.id,
+        sheetCode: qrText || ('KORIX-EXAM-' + Math.floor(Math.random() * 900 + 100)),
+        namaSiswa: 'Nama belum dikenali',
+        mapelNama: exam ? exam.judul : 'Matematika Wajib',
+        examJudul: exam ? exam.judul : 'Penilaian Harian',
+        benar: benar,
+        salah: salah,
+        kosong: 0,
+        nilai: nilai,
+        waktuScan: new Date().toISOString().replace('T', ' ').substring(0, 19)
+      };
+
+      AppState.results.unshift(newRes);
+      SafeStorage.setItem('korix_results', JSON.stringify(AppState.results));
+
+      var statusBox = document.getElementById('last-scan-status');
+      var scanCount = document.getElementById('scan-count');
+      if (scanCount) scanCount.innerText = AppState.results.length;
+
+      if (statusBox) {
+        statusBox.innerHTML = `
+          <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-left space-y-1">
+            <div class="text-xs font-bold text-emerald-800">✅ Berhasil Discan!</div>
+            <div class="text-[11px] text-slate-700 font-mono">Kode Lembar: ${newRes.sheetCode}</div>
+            <div class="text-xs font-semibold text-slate-800">Nilai: <span class="text-blue-600 font-bold text-sm">${newRes.nilai}</span> (Benar: ${newRes.benar}, Salah: ${newRes.salah})</div>
+            <div class="text-[10px] text-slate-500">Siap untuk lembar berikutnya...</div>
+          </div>
+        `;
+      }
+    }
+  
+    function handleExamButtonClick() {
+      if (AppState.currentUser && AppState.currentUser.paketStatus === 'Expired') {
+        showToast('Paket Anda telah kedaluwarsa. Silakan perpanjang paket ke Super Admin.', 'warning');
+      } else {
+        openAddExamModal();
+      }
+    }
+
+    function handlePrintButtonClick() {
+      if (AppState.currentUser && AppState.currentUser.paketStatus === 'Expired') {
+        showToast('Fitur cetak terkunci karena paket Expired.', 'warning');
+      } else {
+        handleBatchPrint();
+      }
+    }
+
+    function handleScanButtonClick() {
+      if (AppState.currentUser && AppState.currentUser.paketStatus === 'Expired') {
+        showToast('Scan OMR terkunci karena paket Expired.', 'warning');
+      } else {
+        toggleCameraScan();
+      }
+    }
+
+    // ==========================================
+    // EXPOSE ALL FUNCTIONS TO WINDOW (BULLETPROOF IN GOOGLE APPS SCRIPT IFRAMES)
+    // ==========================================
+    window.SafeStorage = SafeStorage;
+    window.AppState = AppState;
+    window.showToast = showToast;
+    window.callGAS = callGAS;
+    window.initApp = initApp;
+    window.navigateHome = navigateHome;
+    window.renderApp = renderApp;
+    window.renderNav = renderNav;
+    window.renderLanding = renderLanding;
+    window.renderSuperAdmin = renderSuperAdmin;
+    window.renderAdminTabContent = renderAdminTabContent;
+    window.renderGuru = renderGuru;
+    window.renderGuruTabContent = renderGuruTabContent;
+    window.toggleTeacherDrawer = toggleTeacherDrawer;
+    window.closeTeacherDrawer = closeTeacherDrawer;
+    window.renderTeacherDrawer = renderTeacherDrawer;
+    window.openLoginModal = openLoginModal;
+    window.closeLoginModal = closeLoginModal;
+    window.handleLogin = handleLogin;
+    window.logout = logout;
+    window.toggleLoginPasswordVisibility = toggleLoginPasswordVisibility;
+    window.setAdminTab = setAdminTab;
+    window.adminExtend = adminExtend;
+    window.openAddTeacherModal = openAddTeacherModal;
+    window.handleCreateTeacher = handleCreateTeacher;
+    window.handleSaveLanding = handleSaveLanding;
+    window.setGuruTab = setGuruTab;
+    window.openAddSubjectModal = openAddSubjectModal;
+    window.closeAddSubjectModal = closeAddSubjectModal;
+    window.handleCreateSubject = handleCreateSubject;
+    window.handleDeleteSubject = handleDeleteSubject;
+    window.openAddExamModal = openAddExamModal;
+    window.closeAddExamModal = closeAddExamModal;
+    window.handleCreateExam = handleCreateExam;
+    window.handleDeleteExam = handleDeleteExam;
+    window.handleBatchPrint = handleBatchPrint;
+    window.toggleCameraScan = toggleCameraScan;
+    window.startCamera = startCamera;
+    window.stopCamera = stopCamera;
+    window.handleFilterExamResults = handleFilterExamResults;
+    window.handleDeleteResult = handleDeleteResult;
+    window.openDetailResultModal = openDetailResultModal;
+    window.closeDetailResultModal = closeDetailResultModal;
+    window.exportResultsLandscapePDF = exportResultsLandscapePDF;
+    window.exportResultsCSV = exportResultsCSV;
+    window.editStudentName = editStudentName;
+    window.saveStudentName = saveStudentName;
+    window.handleSaveProfile = handleSaveProfile;
+    window.handleChangePassword = handleChangePassword;
+    window.togglePassVisibility = togglePassVisibility;
+    window.checkPasswordMatch = checkPasswordMatch;
+    window.resetPasswordForm = resetPasswordForm;
+    window.handleExamButtonClick = handleExamButtonClick;
+    window.handlePrintButtonClick = handlePrintButtonClick;
+    window.handleScanButtonClick = handleScanButtonClick;
+
+  </script>
+</body>
+</html>
